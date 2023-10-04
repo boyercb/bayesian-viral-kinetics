@@ -37,3 +37,18 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+
+# Latex files 
+*.aux
+*.pdf
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.synctex.gz
+
+.DS_Store
