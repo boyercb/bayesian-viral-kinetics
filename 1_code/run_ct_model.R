@@ -6,7 +6,7 @@ library(cmdstanr)
 ct_dat <- read_csv("0_data/ct_dat_refined.csv")
 ct_mod <- cmdstan_model("1_code/ct_model_alt.stan")
 
-# ids <- sample(ct_dat$InfectionEvent, 100)
+# ids <- sample(ct_dat$InfectionEvent, )
 # ct_dat <- filter(ct_dat, InfectionEvent %in% ids)
 
 x_vars <- c(
@@ -79,7 +79,7 @@ ct_fit <- ct_mod$sample(
   data = stan_data,
   seed = 123,
   chains = 4,
-  parallel_chains = 8,
+  parallel_chains = 4,
   refresh = 100
 )
 

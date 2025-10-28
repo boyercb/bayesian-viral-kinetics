@@ -1,0 +1,150 @@
+\usepackage{
+    amssymb,
+    amsmath,
+    amsfonts,
+    calc,
+    eurosym,
+    geometry,
+    ulem,
+    graphicx,
+    caption,
+    color,
+    setspace,
+    sectsty,
+    comment,
+    footmisc,
+    caption,
+    % natbib,
+    pdflscape,
+    subcaption,
+    subfiles,
+    titling,
+    array,
+    hyperref,
+    booktabs,
+    longtable,
+    float,
+    authblk,
+    makecell,
+    bbm,
+    threeparttable}
+
+\usepackage{pgfplots} 
+
+\usepackage[
+    backend=biber,
+    style=nature,
+    date=year,
+    doi=true,
+    isbn=false,
+    url=false,
+    eprint=false
+]{biblatex}
+
+\AtEveryBibitem{%
+  \clearfield{note}%
+}
+\AtEveryCitekey{\clearlist{publisher}}
+\AtEveryBibitem{\clearlist{publisher}}
+
+\usepackage{pgf,tikz}
+\usetikzlibrary{arrows, automata}
+\usetikzlibrary{shapes.geometric,positioning}
+\usetikzlibrary{positioning,calc}
+
+\usepackage{siunitx}
+\newcolumntype{d}{S[input-symbols = ()]}
+
+\normalem
+
+\renewcommand\Affilfont{\small\itshape}
+
+\onehalfspacing
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}{Corollary}
+\newtheorem{proposition}{Proposition}
+\newtheorem{definition}{Definition}
+
+\newenvironment{proof}[1][Proof]{\noindent\textbf{#1.} }{\ \rule{0.5em}{0.5em}}
+
+\newtheorem{hyp}{Hypothesis}
+\newtheorem{subhyp}{Hypothesis}[hyp]
+\renewcommand{\thesubhyp}{\thehyp\alph{subhyp}}
+
+\newcommand{\red}[1]{{\color{red} #1}}
+\newcommand{\blue}[1]{{\color{blue} #1}}
+
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}m{#1}}
+\newcolumntype{C}[1]{>{\centering\arraybackslash}m{#1}}
+\newcolumntype{R}[1]{>{\raggedleft\arraybackslash}m{#1}}
+\subsubsectionfont{\normalfont\itshape}
+
+\usepackage{mathtools}
+
+\usepackage{letltxmacro}
+\LetLtxMacro\orgvdots\vdots
+\LetLtxMacro\orgddots\ddots
+
+\makeatletter
+\DeclareRobustCommand\vdots{%
+  \mathpalette\@vdots{}%
+}
+\newcommand*{\@vdots}[2]{%
+  % #1: math style
+  % #2: unused
+  \sbox0{$#1\cdotp\cdotp\cdotp\m@th$}%
+  \sbox2{$#1.\m@th$}%
+  \vbox{%
+    \dimen@=\wd0 %
+    \advance\dimen@ -3\ht2 %
+    \kern.5\dimen@
+    % remove side bearings
+    \dimen@=\wd2 %
+    \advance\dimen@ -\ht2 %
+    \dimen2=\wd0 %
+    \advance\dimen2 -\dimen@
+    \vbox to \dimen2{%
+      \offinterlineskip
+      \copy2 \vfill\copy2 \vfill\copy2 %
+    }%
+  }%
+}
+\DeclareRobustCommand\ddots{%
+  \mathinner{%
+    \mathpalette\@ddots{}%
+    \mkern\thinmuskip
+  }%
+}
+\newcommand*{\@ddots}[2]{%
+  % #1: math style
+  % #2: unused
+  \sbox0{$#1\cdotp\cdotp\cdotp\m@th$}%
+  \sbox2{$#1.\m@th$}%
+  \vbox{%
+    \dimen@=\wd0 %
+    \advance\dimen@ -3\ht2 %
+    \kern.5\dimen@
+    % remove side bearings
+    \dimen@=\wd2 %
+    \advance\dimen@ -\ht2 %
+    \dimen2=\wd0 %
+    \advance\dimen2 -\dimen@
+    \vbox to \dimen2{%
+      \offinterlineskip
+      \hbox{$#1\mathpunct{.}\m@th$}%
+      \vfill
+      \hbox{$#1\mathpunct{\kern\wd2}\mathpunct{.}\m@th$}%
+      \vfill
+      \hbox{$#1\mathpunct{\kern\wd2}\mathpunct{\kern\wd2}\mathpunct{.}\m@th$}%
+    }%
+  }%
+}
+\makeatother
+
+
+\newcommand{\ode}[2]{\frac{d{#1}}{d{#2}}}
+\DeclareMathOperator{\E}{E}
+\DeclareMathOperator{\indep}{\perp\!\!\!\perp}
+\def\expit{\mathrm{expit}}
+\def\logit{\mathrm{logit}}
+% \geometry{left=1.0in,right=1.0in,top=1.0in,bottom=1.0in}

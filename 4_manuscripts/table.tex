@@ -1,0 +1,307 @@
+\documentclass[11pt]{article}
+
+\input{setup}
+
+\begin{document}
+Our goal is to develop a generative model of within-host viral kinetics during an acute infection which can be fit to data and linked through an observational process to multiple measures of viral shedding. We define the following variables:
+\begin{itemize}
+    \item $V_t$ is infectious virus at time $t$,
+    \item $R_t$ is viral RNA copies at time $t$,
+    \item $Y_t$ is symptom onset (0/1) at time $t$,
+    \item $Z_t$ is a vector of observed test or biomarker results at time $t$ including results from viral culture ($V^*_t$), RT-PCR ($R^*_t$), and lateral flow tests ($L^*_t$), e.g. $Z_t = (V^*_t, R^*_t, L^*_t)$.
+    \item $X$ is a vector of individual covariates (e.g. sex, age, immune history),
+    \item $S$ is a vector of test characteristics, such as swab type, gene target, etc.
+\end{itemize}
+where $t$ indexes time since inoculation and for notational convenience we suppress indexes for individuals $i$. We would like to characterize the joint distribution, 
+$$
+f(V_t, R_t, Y_t, Z_t | X, t, S; \theta)
+$$
+To specify the model, it is convenient to factorize the joint distribution into a product of conditional distributions. A natural factorization is:
+
+\begin{equation*}
+    \log V_t = g(t; \theta),
+\end{equation*}
+where
+\begin{equation*}
+    g(t; \theta) = \begin{cases}
+   \dfrac{\delta}{\omega_p} (t - (t_p - \omega_p)) & \text{if } t \leq t_p \\
+    \delta - \dfrac{\delta}{\omega_r} (t - t_p) & \text{if } t > t_p,
+\end{cases}
+\end{equation*}
+with parameters representing peak number of infectious virus ($\delta$), proliferation time ($\omega_p$), clearance time ($\omega_r$), and time of peak ($t_p$). As all of which can potentially vary with covariates $X$. The dotted line in Figure X shows an example trajectory of the number of infectious viral particles over time super-imposed on the numerical solution from the target cell limited model. A notable limitation is that the piece-wise exponential model tends to overestimate the peak value (in our experience by between X and Y\%). However, for our purposes it useful approximation which is easier to fit and directly parameterizes many of the quantities of interest, such as the time to peak and the time to clearance.
+
+\subsection{Viral RNA copies}
+Many tests, such as RT-PCR, detect or quantify viral RNA rather than infectious virus. That is, they do not distinguish between replication-competent (infectious) virus and residual (non-infectious) viral RNA which could be present due to production of nonviable viral particles during infection or may linger in a nonviable but not fully degraded state after the infection has been cleared by the immune system. In the target cell limited model, we could track the amount of viral RNA via additional compartments. For instance, we could add compartments tracking the number of  free floating RNA ($R$) via 
+\begin{equation*}
+    \dfrac{dR}{dt} = q p I - e R 
+\end{equation*} 
+where $q$ the amount of viral RNA per infectious virion and $e$ is the rate of degradation and clearance of viral RNA. However, we do not have direct measurements of the number of viral RNA copies, and the relationship between the number of infectious virus and the number of viral RNA copies is not well understood. Therefore, we again posit a semi-mechanistic model for the number of viral RNA copies. We assume that the number of RNA copies is a shifted version of the piece-wise exponential model for infectious virus
+\begin{equation*}
+    \log R_t = g(t; \theta^\prime),
+\end{equation*}
+where
+\begin{equation*}
+    g(t; \theta^\prime) = \begin{cases}
+   \dfrac{\delta^\prime}{\omega^\prime_p} (t - (t^\prime_p - \omega^\prime_p)) & \text{if } t \leq t^\prime_p \\
+    \delta^\prime - \dfrac{\delta^\prime}{\omega^\prime_r} (t - t^\prime_p) & \text{if } t > t^\prime_p,
+\end{cases}
+\end{equation*}
+and
+\begin{align*}
+    \delta^\prime &= \delta^\prime_0 \exp(\tau_{\delta} \cdot \log \delta) \\
+    \omega^\prime_{p} &= \omega^\prime_{p_0} \exp(\tau_{\omega_{p}} \cdot \log \omega_{p}) \\
+    \omega^\prime_{r} &= \omega^\prime_{r_0} \exp(\tau_{\omega_{r}} \cdot \log \omega_{r}) \\
+    t^\prime_{p} &= t^\prime_{p_0} + \tau_{t_p} \cdot t_{p} 
+\end{align*}
+where $\delta^\prime$, $\omega^\prime_{p}$, $\omega^\prime_{r}$, and $t^\prime_{p}$ are transformations of the corresponding parameters for the number of infectious virus. The transformations for $\delta^\prime$, $\omega^\prime_{p}$, and $\omega^\prime_{r}$ are on the log scale to ensure that they are strictly positive.
+
+\subsection{Symptom onset}
+The relationship between infectious virus and the onset of symptoms or symptom profile is not well understood. Therefore, we posit a statistical model for the onset of symptoms. Biologically, symptoms are a manifestation of the infection or the immune response, for which the number of infectious virus and the number of viral RNA copies are at least a proxy (and one we have information about). Thus, we assume that the discrete-time hazard for the onset of a particular symptom, $Y_{jt}$, is a function of $V_t$ and $R_t$ via the logistic model
+\begin{equation*}
+    Y_{j,t} \mid V_t, R_t, t, Y_{j,t-1} = 0 \sim \text{Bernoulli}(\text{logit}^{-1}(\eta_{0j} + \eta_{1j} \log V_t + \eta_{2j} \log R_t)).
+\end{equation*}
+
+\subsection{Observation models}
+A number of viral culture assays seek to directly detect and quantify the number of infectious virus particles $V_t$. The simplest isolates the virus in cell culture by inoculating a sample onto a monolayer of susceptible cells and observing whether a cytopathic effect occurs. We model the probability of a positive viral culture result from this test as a function of the number of infectious virus particles via the logistic saturation model
+\begin{equation*}
+    V^{*}_{t,\text{culture}} \sim \text{Bernoulli}(\text{logit}^{-1}(\pi_0 + \pi_1 \log V_t)).
+\end{equation*}
+Alternatively, the number of infectious virus particles can be directly quantified by 50\% tissue culture infectious dose (TCID50), plaque forming units (PFU) assays, or focus-forming assays. For tests based on TCID50, we assume the number of days to a positive result is a function of the number of infectious virus particles in the innoculating sample and model the number of days to a positive result using the ordinal logistic model
+\begin{equation*}
+    V^{*}_{t,\text{TCID50}} \sim \text{Ordered-Logistic}(\log V_t, c).
+\end{equation*}
+where 
+\begin{equation*}
+    f(k; \log V_t, c) = 
+    \begin{cases}
+        1 - \text{logit}^{-1}(\log V_t - c_1) & \text{if } k = 1 \\
+        \text{logit}^{-1}(\log V_t - c_{k-1}) - \text{logit}^{-1}(\log V_t - c_k) & \text{if } 1 < k < K \\
+        \text{logit}^{-1}(\log V_t - c_{K-1}) & \text{if } k = K
+    \end{cases}
+\end{equation*}
+i.e. $V_t$ is treated as a latent continuous variable which is censored at distinct thresholds, $c$, for each level of the ordinal outcome $k \in \{1, \ldots, K\}$. The plaque forming units (PFU) assay and focus-forming assays seek to directly characterize the amount of infectious virus in a sample by counting plaques or foci. We model the concentration of plaques or foci as a function of the true number of infectious virus particles via the log-normal model
+\begin{align*}
+    \log V^{*}_{t,\text{FFA}} &= \log V_t + \varepsilon_{\text{FFA}} \\
+    \varepsilon_{\text{FFA}} &\sim \text{Normal}(0, \sigma_{\text{FFA}})_{lod} \\
+    \log V^{*}_{t,\text{PFU}} &= \log V_t + \varepsilon_{\text{PFU}} \\
+    \varepsilon_{\text{PFU}} &\sim \text{Normal}(0, \sigma_{\text{PFU}})
+\end{align*}
+where we assume errors are homoscedastic and censored at the level of detection for each assay. 
+
+Much like simple viral isolation, qualitative RT-PCR tests provide information on the presence or absence of viral RNA in a sample, but not direct quantification. We model the probability of a positive RT-PCR test as a function of the number of viral RNA copies via the logistic model
+\begin{equation*}
+    R^{*}_{t,\text{PCR}} \sim \text{Bernoulli}(\text{logit}^{-1}(\pi_0 + \pi_1 \log R_t)).
+\end{equation*}
+By contrast, quantitative RT-PCR tests provide a cycle threshold (Ct) value, which is inversely related to the concentration of viral RNA in the clinical sample. Through calibration using an external standard with a defined number of RNA copies, the Ct value can be transformed into an estimate of the number of viral RNA copies via a characteristic curve. We model the number of viral RNA copies as a function of the Ct value via the log-normal model
+\begin{align*}
+    \log R^{*}_{t,\text{qPCR}} &= \log R_t + \varepsilon_{\text{qPCR}} \\
+    \varepsilon_{\text{qPCR}} &\sim \text{Normal}(0, \sigma_{\text{qPCR}})_{lod}
+\end{align*}
+where, as with the PFU and FFA assays previously, we assume errors are homoscedastic and censored at the level of detection for each assay. Beyond simple measurement error of the quantitative result, a RT-PCR test can systematically fail due to sample quality or processing errors. We allow for false positive results by assuming that $R^{*}_{t,\text{qPCR}}$ are drawn from a mixture distribution
+\begin{equation*}
+    \log R^{*}_{t,\text{qPCR}} \sim \lambda \cdot \text{Normal}(\log R_t, \sigma_{\text{qPCR}}) + (1 - \lambda) \cdot \text{Exp}(1/\mu)
+\end{equation*}
+where $\lambda$ is the test specificity (assumed to be 0.99) and $\mu$ is the mean of the error distribution for false positive tests, which we set so that 90\% of distribution is within 1 Ct unit of the level of detection.
+
+Lateral flow tests detect the presence of viral nucleocapsid proteins in a sample. The test is positive if the concentration of viral proteins exceeds a certain threshold. We assume the concentration of viral proteins is related to the number of infectious virus and the number of viral RNA copies, but do not directly model the true value. Instead, we model the probability of a positive antigen test as a function of the number of infectious virus particles and the number of viral RNA copies via the logistic model
+\begin{equation*}
+    L_t^* \sim \text{Bernoulli}(\text{logit}^{-1}(\gamma_0 + \gamma_1 \log V_t + \gamma_2 \log R_t)).
+\end{equation*}
+
+The gold standard for symptom data is a daily diary where participants record the presence or absence and severity across a range of symptoms, in which case we assume $Y^*_{jt} = Y_{jt}$. However, sometimes only information about the presence or absence of any symptoms (or a subset of symptoms) is available. In this case, we model the time to onset of any symptom via
+\begin{equation*}
+    Y^*_{t,\text{any}} \sim \text{Bernoulli}\left[1 - \prod_{j=1}^J \left\{1 - \text{logit}^{-1}(\eta_{0j} + \eta_{1j} \log V_t + \eta_{2j} \log R_t)\right\}\right].
+\end{equation*}
+
+
+\subsection{Covariate effects} 
+It is well established that viral shedding varies with individual characteristics such as age, variant, and prior vaccination or infection history. Therefore, we allow the parameters of the piece-wise exponential model for the number of infectious virus particles and the number of viral RNA copies, as well as the parameters of the symptom onset and observation models, to vary with individual covariates $X$. In particular, we allow the parameters of $g(t; \theta)$ and $g(t; \theta^\prime)$ to vary with $X$ via
+\begin{align*}
+    \delta(X) &= \delta_0 \exp(\beta_\delta X) \\
+    \omega_{p}(X) &= \omega_{p_0} \exp(\beta_{\omega_p} X) \\
+    \omega_{r}(X) &= \omega_{r_0} \exp(\beta_{\omega_r} X)
+\end{align*}
+and 
+\begin{align*}
+    \delta^\prime(X) &= \delta^\prime_0 \exp\{\tau_{\delta} \cdot \delta(X) + \beta^\prime_\delta X\} \\
+    \omega^\prime_{p_0}(X) &= \omega^\prime_{p} \exp\{\tau_{\omega_{p}} \cdot \omega_{p}(X) + \beta^\prime_{\omega_p} X\} \\
+    \omega^\prime_{r_0}(X) &= \omega^\prime_{r} \exp\{\tau_{\omega_{r}} \cdot \omega_{r}(X) + \beta^\prime_{\omega_r} X\}
+\end{align*}
+as well as symptom onset via
+\begin{equation*}
+    Y_t \mid V_t, R_t, X, t, Y_{t-1} = 0 \sim \text{Bernoulli}(\text{logit}^{-1}(\pi_0 + \pi_1 \log V_t + \pi_2 \log R_t + \beta_{Y} X)).
+\end{equation*}
+
+We include in $X$: age (categorized as 0 to 30 years old, 30 to 50 years old, or 50+); variant (categorized as Pre-Alpha, Alpha, Delta, Omicron, BA.4/BA.5, or Other); a binary indicator of previous infection; and vaccination history (categorized as Unvaccinated, Vaccinated boosted, Vaccinated unboosted, Vaccinated unreported, Unreported, or Boosted unreported primary). For categorical variables, we use indicator coding with the first category as the reference level, in which case the reference model is for an unvaccinated and immunologically naive 0 to 30 year old infected with Pre-Alpha wildtype or variant.
+
+\subsection{Individual and setting-specific random effects}
+There is often residual variation in viral trajectories at the individual level beyond that which can be explained by the covariates in $X$. This could be due to heterogeneity in innoculating dose, differences in immune function, or other complex interactions between host and pathogen characteristics. We model residual variation in infectious virus and viral RNA at the individual level through the inclusion of individual-specific random effects for peak height, proliferation duration, clearance duration, and timing of peak, i.e. 
+\begin{align*}
+    \delta_0 &= \Delta_0 \exp(\delta_{0,i}) & \delta^\prime_0 &= \Delta^\prime_0 \exp(\delta^\prime_{0,i}) \\
+    \omega_{p_0} &= \Omega_{p_0} \exp( \omega_{p_0,i}) & \omega^\prime_{p_0} &= \Omega^\prime_{p_0} \exp( \omega^\prime_{p_0,i}) \\
+    \omega_{r_0}  &= \Omega_{r_0} \exp(\omega_{r_0,i}) & \omega^\prime_{r_0}  &= \Omega^\prime_{r_0} \exp(\omega^\prime_{r_0,i})
+\end{align*}
+where 
+\begin{align*}
+\delta_{0,i} &\sim N(0, \sigma_{\delta_0}) & \delta^\prime_{0,i} &\sim N(0, \sigma_{\delta^\prime_0}) \\
+\omega_{p_0,i} &\sim N(0, \sigma_{\omega_{p_0}}) & \omega^\prime_{p_0,i} &\sim N(0, \sigma_{\omega^\prime_{p_0}}) \\
+\omega_{r_0,i} &\sim N(0, \sigma_{\omega_{r_0}}) & \omega^\prime_{r_0,i} &\sim N(0, \sigma_{\omega^\prime_{r_0}}).
+\end{align*}
+
+When synthesizing results across settings additional variability may be present due to differences in measurement, such as the type of test used, the swab type, who does the swabbing, or the gene target, or differences in characteristics of participants, the pathogen, or other outbreak dynamics. We model this setting-specific variation through the inclusion of setting-specific random effects for the observation model parameters. 
+
+
+
+\begin{table}[p]
+    \centering
+    \small
+    \begin{tabular}{lcccccccc}
+     \toprule
+     & \multicolumn{2}{c}{NBA} & \multicolumn{2}{c}{ATACCC} & \multicolumn{2}{c}{UIUC}  & \multicolumn{2}{c}{HCT} \\
+      & N & \%& N & \% & N & \% & N & \% \\
+     \midrule
+     \textit{Individual characteristics} &  &  &  &  &  &  &  &  \\
+     Age: [0,30) & 818 & 41.1 & 16 & 28.1 & 37 & 61.7 & 18 & 100.0 \\
+     Age: [30,50) & 876 & 44.0 & 32 & 56.1 & 17 & 28.3 & 0 & 0.0 \\
+     Age: [50,100) & 295 & 14.8 & 9 & 15.8 & 6 & 10.0 & 0 & 0.0 \\
+     Recurrence: No & 193 & 90.3 & 57 & 100.0 & 60 & 100.0 & 18 & 100.0 \\
+     Recurrence: Yes & 193 & 9.7 & 0 & 0.0 & 0 & 0.0 & 0 & 0.0 \\
+     Variant: Pre-Alpha & 191 & 9.5 & 13 & 22.8 & 43 & 71.7 & 18 & 100.0 \\
+     Variant: Alpha & 49 & 2.5 & 12 & 21.0 & 16 & 26.7 & 0 & 0.0 \\
+     Variant: Delta & 191 & 9.5 & 25 & 43.8 & 0 & 0.0 & 0 & 0.0 \\
+     Variant: Omicron & 1,400 & 70.4 & 0 & 0.0 & 0 & 0.0 & 0 & 0.0 \\
+     Variant: BA.4/BA.5 & 71 & 3.6 & 0 & 0.0 & 0 & 0.0 & 0 & 0.0 \\
+     Variant: Other & 278 & 14.0 & 0 & 0.0 & 1 & 1.6 & 0 & 0.0\\
+     History: Unvaccinated & 94 & 4.7 & 24 & 53.4 & 60 & 100.0 & 18 & 100.0 \\
+     History: Vaccinated boosted & 982 & 49.4 & 0 & 0.0 & 0 & 0.0 & 0 & 0.0 \\
+     History: Vaccinated unboosted & 269 & 13.5 & 21 & 46.6 & 0 & 0.0 & 0 & 0.0\\
+     History: Vaccinated unreported & 5 & 0.3 & 0 & 0.0 & 0 & 0.0 & 0 & 0.0\\
+     History: Unreported & 579 & 29.1 & 0 & 0.0 & 0 & 0.0 & 0 & 0.0\\
+     History: Boosted unreported primary & 20 & 1.2 & 0 &0.0 & 0 & 0.0 & 0 & 0.0\\
+     \midrule
+     \textit{Lab measurements} &  &  &  &  &  &  &  &  \\
+        Ct values & 21,463 & & 638 & & 934 & & 684 \\
+        Viral cultures & 0 & & 638 & & 934 & & 684 \\
+        LFD values & 0 & & 638 & & 934 & & 684 \\
+        Symptom diaries & 0 & & 638 & & 934 & & 684 \\
+     \midrule
+     Individuals & 1,989 &  & 57 & & 60 & & 18 \\
+     \bottomrule
+     \end{tabular}
+    \label{tab:my_label}
+\end{table}
+
+\begin{table}[p]
+    \centering
+    \begin{tabular}{lccc}
+    \toprule
+     & \multicolumn{2}{c}{Peak value} \\
+    Characteristic & $\exp(\beta)$ & 95\% CrI\\
+    \midrule
+     Age: [30,50) & 1.01 & (0.99, 1.02)\\
+     Age: [50,100) & 1.00 & (0.98, 1.02)\\
+     Recurrence & 0.95 & (0.92, 0.97)\\
+     Variant: Alpha & 1.02 & (0.98, 1.06)\\
+     Variant: Delta & 1.17 & (1.13, 1.21)\\
+     Variant: Omicron & 1.05 & (1.02, 1.08)\\
+     Variant: BA.4/BA.5 & 1.15 & (1.10, 1.21)\\
+     Variant: other & 0.98 & (0.95, 1.02)\\
+     History: Vaccinated boosted & 0.84 & (0.81, 0.87)\\
+     History: Vaccinated unboosted & 0.86 & (0.83, 0.89)\\
+     History: Vaccinated unreported & 0.83 & (0.80, 0.87)\\
+     History: Unreported & 0.86 & (0.82, 0.91)\\
+     History: Boosted unreported primary & 0.88 & (0.85, 0.90)\\
+     \midrule
+     Reference value, log [RNA] per ml & 17.22 & (16.81, 17.65)\\
+     \bottomrule
+    \end{tabular}
+
+    \begin{table}[p]
+        \centering
+        \begin{tabular}{lcc}
+         \toprule
+         & \multicolumn{2}{c}{Proliferation duration } \\
+         Characteristic & $\exp(\beta)$ & 95\% CrI\\
+         \midrule
+         Age: [30,50) & 0.97 & (0.91, 1.04)\\
+         Age: [50,100) & 1.08 & (0.99, 1.19)\\
+         Recurrence & 0.86 & (0.77, 0.95)\\
+         Variant: Alpha & 0.79 & (0.68, 0.91)\\
+         Variant: Delta & 0.66 & (0.57, 0.75)\\
+         Variant: Omicron & 0.93 & (0.82, 1.04)\\
+         Variant: BA.4/BA.5 & 0.87 & (0.68, 1.14)\\
+         Variant: other & 1.11 & (0.97, 1.26)\\
+         History: Vaccinated boosted & 1.44 & (1.27, 1.64)\\
+         History: Vaccinated unboosted & 1.17 & (1.02, 1.35)\\
+         History: Vaccinated unreported & 1.22 & (1.03, 1.45)\\
+         History: Unreported & 1.14 & (0.94, 1.39)\\
+         History: Boosted unreported primary & 1.32 & (1.17, 1.50)\\
+         \midrule
+         Reference value, days & 7.29 & (6.61, 8.04)\\
+         Reference value (lod), days & 4.67 & (4.23, 5.15)\\
+         \bottomrule
+         \end{tabular}
+ \   \end{table}
+
+ \begin{table}[p]
+    \centering
+    \begin{tabular}{lcc}
+     \toprule
+     & \multicolumn{2}{c}{Clearance duration} \\
+     Characteristic & $\exp(\beta)$ & 95\% CrI\\
+     \midrule
+     Age: [30,50) & 1.04 & (1.01, 1.08)\\
+     Age: [50,100) & 1.19 & (1.13, 1.26)\\
+     Recurrence & 0.74 & (0.70, 0.79)\\
+     Variant: Alpha & 0.95 & (0.87, 1.04)\\
+     Variant: Delta & 0.92 & (0.85, 1.00)\\
+     Variant: Omicron & 0.90 & (0.84, 0.96)\\
+     Variant: BA.4/BA.5 & 0.87 & (0.78, 0.97)\\
+     Variant: other & 1.02 & (0.94, 1.10)\\
+     History: Vaccinated boosted & 0.86 & (0.80, 0.93)\\
+     History: Vaccinated unboosted & 0.74 & (0.68, 0.81)\\
+     History: Vaccinated unreported & 0.79 & (0.72, 0.87)\\
+     History: Unreported & 0.98 & (0.88, 1.10)\\
+     History: Boosted unreported primary & 0.87 & (0.81, 0.93)\\
+     \midrule
+     Reference value, days & 14.55 & (13.69, 15.44)\\
+     Reference value (lod), days & 9.31 & (7.96, 8.71)\\
+     \bottomrule
+     \end{tabular}
+\end{table}
+\end{table}
+
+\begin{table}[p]
+    \centering
+    \caption{Correlation between [RNA] and viral culture}
+    \begin{tabular}{lcccc}
+     \toprule
+     Parameter & $\exp(\rho)$ & 95\% CrI & $\theta$ & 95\% CrI\\
+     \midrule
+     Peak ($\delta^*$) & 0.47 & (0.45, 0.50) &  & \\
+     Proliferation ($\omega_p^*$) & 0.50 & (0.43, 0.59) &  & \\
+     Clearance ($\omega_r^*$) & 0.38 & (0.35, 0.42) &  & \\
+     \midrule
+     Peak time ($t_p^*$) & 1.37 & (1.15, 1.64) & -0.05 & (-0.32, 0.24)\\
+     \bottomrule
+     \end{tabular}
+    \label{tab:corr}
+\end{table}
+
+\begin{table}[p]
+    \centering
+    \caption{LFD positivity as a function of [RNA] and viral culture}
+    \begin{tabular}{lcc}
+     \toprule
+     Predictor & $\exp(\gamma)$ & 95\% CrI\\
+     \midrule
+     log RNA copies & 1.60 & (1.41, 1.80)\\
+     log PFU culturable virus & 1.27 & (1.12, 1.45)\\
+     \midrule
+     Intercept & -6.41 & (-7.80, -5.00)\\
+     \bottomrule
+     \end{tabular}
+    \label{tab:lfd}
+\end{table}
+
+\end{document}

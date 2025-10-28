@@ -1,0 +1,181 @@
+
+\begin{appendix}
+
+    \renewcommand{\thefigure}{A\arabic{figure}}
+    \setcounter{figure}{0}
+    
+    \renewcommand{\thetable}{A\arabic{table}}
+    \setcounter{table}{0}
+    
+    \renewcommand{\theequation}{A\arabic{equation}}
+    \setcounter{equation}{0}
+
+%    \appendixwithtoc
+    \newpage
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{../3_figures/prior_pe.pdf}
+        \caption{}
+    \end{figure}
+    
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{../3_figures/prior_trans_times.pdf}
+        \caption{}
+    \end{figure}
+    
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{../3_figures/prior_trajectories.pdf}
+        \caption{}
+    \end{figure}
+    
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{../3_figures/trace_plots.pdf}
+        \caption{}
+    \end{figure}
+
+    \begin{landscape}
+        \begin{figure}[p]
+            \centering
+            \includegraphics[width=\linewidth]{../3_figures/ataccc_fit.pdf}
+            \caption{}
+        \end{figure}
+        
+        \begin{figure}[p]
+            \centering
+            \includegraphics[width=\linewidth]{../3_figures/nba_fit.pdf}
+            \caption{}
+        \end{figure}
+    
+        \begin{figure}[p]
+            \centering
+            \includegraphics[width=\linewidth]{../3_figures/uiuc_fit.pdf}
+            \caption{}
+        \end{figure}
+    
+        \begin{figure}[p]
+            \centering
+            \includegraphics[width=\linewidth]{../3_figures/hic_fit.pdf}
+            \caption{}
+        \end{figure}
+    \end{landscape}
+    
+
+    \begin{table}[p]
+        \centering
+        \caption{Posterior estimates of peak value.}
+        \begin{tabular}{lccc}
+        \toprule
+         & \multicolumn{2}{c}{Peak value} \\
+        Characteristic & $\exp(\beta)$ & 95\% CrI\\
+        \midrule
+         Age: [30,50) & 1.01 & (0.99, 1.02)\\
+         Age: [50,100) & 1.00 & (0.98, 1.02)\\
+         Recurrence & 0.95 & (0.92, 0.97)\\
+         Variant: Alpha & 1.02 & (0.98, 1.06)\\
+         Variant: Delta & 1.17 & (1.13, 1.21)\\
+         Variant: Omicron & 1.05 & (1.02, 1.08)\\
+         Variant: BA.4/BA.5 & 1.15 & (1.10, 1.21)\\
+         Variant: other & 0.98 & (0.95, 1.02)\\
+         History: Vaccinated boosted & 0.84 & (0.81, 0.87)\\
+         History: Vaccinated unboosted & 0.86 & (0.83, 0.89)\\
+         History: Vaccinated unreported & 0.83 & (0.80, 0.87)\\
+         History: Unreported & 0.86 & (0.82, 0.91)\\
+         History: Boosted unreported primary & 0.88 & (0.85, 0.90)\\
+         \midrule
+         Reference value, log [RNA] per ml & 17.22 & (16.81, 17.65)\\
+         \bottomrule
+        \end{tabular}
+    \end{table}
+    \begin{table}[p]
+        \caption{Posterior estimates of proliferation phase duration.}
+        \centering
+        \begin{tabular}{lcc}
+         \toprule
+         & \multicolumn{2}{c}{Proliferation duration } \\
+         Characteristic & $\exp(\beta)$ & 95\% CrI\\
+         \midrule
+         Age: [30,50) & 0.97 & (0.91, 1.04)\\
+         Age: [50,100) & 1.08 & (0.99, 1.19)\\
+         Recurrence & 0.86 & (0.77, 0.95)\\
+         Variant: Alpha & 0.79 & (0.68, 0.91)\\
+         Variant: Delta & 0.66 & (0.57, 0.75)\\
+         Variant: Omicron & 0.93 & (0.82, 1.04)\\
+         Variant: BA.4/BA.5 & 0.87 & (0.68, 1.14)\\
+         Variant: other & 1.11 & (0.97, 1.26)\\
+         History: Vaccinated boosted & 1.44 & (1.27, 1.64)\\
+         History: Vaccinated unboosted & 1.17 & (1.02, 1.35)\\
+         History: Vaccinated unreported & 1.22 & (1.03, 1.45)\\
+         History: Unreported & 1.14 & (0.94, 1.39)\\
+         History: Boosted unreported primary & 1.32 & (1.17, 1.50)\\
+         \midrule
+         Reference value, days & 7.29 & (6.61, 8.04)\\
+         Reference value (lod), days & 4.67 & (4.23, 5.15)\\
+         \bottomrule
+         \end{tabular}
+   \end{table}
+
+ \begin{table}[p]
+    \centering
+    \caption{Posterior estimates of clearance phase duration.}
+    \begin{tabular}{lcc}
+     \toprule
+     & \multicolumn{2}{c}{Clearance duration} \\
+     Characteristic & $\exp(\beta)$ & 95\% CrI\\
+     \midrule
+     Age: [30,50) & 1.04 & (1.01, 1.08)\\
+     Age: [50,100) & 1.19 & (1.13, 1.26)\\
+     Recurrence & 0.74 & (0.70, 0.79)\\
+     Variant: Alpha & 0.95 & (0.87, 1.04)\\
+     Variant: Delta & 0.92 & (0.85, 1.00)\\
+     Variant: Omicron & 0.90 & (0.84, 0.96)\\
+     Variant: BA.4/BA.5 & 0.87 & (0.78, 0.97)\\
+     Variant: other & 1.02 & (0.94, 1.10)\\
+     History: Vaccinated boosted & 0.86 & (0.80, 0.93)\\
+     History: Vaccinated unboosted & 0.74 & (0.68, 0.81)\\
+     History: Vaccinated unreported & 0.79 & (0.72, 0.87)\\
+     History: Unreported & 0.98 & (0.88, 1.10)\\
+     History: Boosted unreported primary & 0.87 & (0.81, 0.93)\\
+     \midrule
+     Reference value, days & 14.55 & (13.69, 15.44)\\
+     Reference value (lod), days & 9.31 & (7.96, 8.71)\\
+     \bottomrule
+     \end{tabular}
+\end{table}
+
+\begin{table}[p]
+    \centering
+    \caption{Correlation between [RNA] and viral culture}
+    \begin{tabular}{lcccc}
+     \toprule
+     Parameter & $\exp(\rho)$ & 95\% CrI & $\theta$ & 95\% CrI\\
+     \midrule
+     Peak ($\delta^*$) & 0.47 & (0.45, 0.50) &  & \\
+     Proliferation ($\omega_p^*$) & 0.50 & (0.43, 0.59) &  & \\
+     Clearance ($\omega_r^*$) & 0.38 & (0.35, 0.42) &  & \\
+     \midrule
+     Peak time ($t_p^*$) & 1.37 & (1.15, 1.64) & -0.05 & (-0.32, 0.24)\\
+     \bottomrule
+     \end{tabular}
+    \label{tab:corr}
+\end{table}
+
+\begin{table}[p]
+    \centering
+    \caption{LFD positivity as a function of [RNA] and viral culture}
+    \begin{tabular}{lcc}
+     \toprule
+     Predictor & $\exp(\gamma)$ & 95\% CrI\\
+     \midrule
+     log RNA copies & 1.60 & (1.41, 1.80)\\
+     log PFU culturable virus & 1.27 & (1.12, 1.45)\\
+     \midrule
+     Intercept & -6.41 & (-7.80, -5.00)\\
+     \bottomrule
+     \end{tabular}
+    \label{tab:lfd}
+\end{table}
+\end{appendix}
