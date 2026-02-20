@@ -115,7 +115,7 @@ functions {
     // ── per-observation data (full arrays, indexed by start+n-1) ───────────
     array[] real   time_obs,
     vector         rna_obs,
-    vector         pfu_obs,
+    data vector    pfu_obs,
     array[] int    lfd_obs,
     array[] int    sym_obs,
     array[] int    sym_at_risk_obs,
