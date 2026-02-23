@@ -487,19 +487,21 @@ For measuring infectious virus directly, there are quantitative assays based on 
     \log V^{*}_{t,\text{PFU}} &= \log V_t + \varepsilon_{\text{PFU}} \\
     \varepsilon_{\text{PFU}} &\sim \text{Normal}(0, \sigma_{\text{PFU}})_{lod}
 \end{align*}
-there are also semi-quantitative results based on the time to 50\% infection in a standard medium
+there are also semi-quantitative results based on the time to 50\% infection in a standard medium.
+Assuming exponential viral growth in culture at rate $r$ with CPE detected at threshold $V^{\dagger}$, the latent time to detection is
 \begin{equation*}
-    V^{*}_{t,\text{TCID50}} \sim \text{Ordered-Logistic}(\log V_t, c).
+    d^{*} = a - b \log V_t + \varepsilon, \quad \varepsilon \sim \text{Normal}(0, \sigma_{\text{TCID50}})
 \end{equation*}
-where 
+where $b = 1/r > 0$ is the inverse culture growth rate.
+Since cultures are checked daily, the observed day $D \in \{2,3,4,5,\text{neg}\}$ is interval-censored:
 \begin{equation*}
-    f(k; \log V_t, c) = 
-    \begin{cases}
-        1 - \text{logit}^{-1}(\log V_t - c_1) & \text{if } k = 1 \\
-        \text{logit}^{-1}(\log V_t - c_{k-1}) - \text{logit}^{-1}(\log V_t - c_k) & \text{if } 1 < k < K \\
-        \text{logit}^{-1}(\log V_t - c_{K-1}) & \text{if } k = K
+    P(D = d \mid V_t) = \begin{cases}
+        \Phi\!\left(\frac{2 - \mu}{\sigma}\right) & d = 2 \\
+        \Phi\!\left(\frac{d - \mu}{\sigma}\right) - \Phi\!\left(\frac{d-1 - \mu}{\sigma}\right) & d \in \{3,4,5\} \\
+        1 - \Phi\!\left(\frac{5 - \mu}{\sigma}\right) & d = \text{neg}
     \end{cases}
 \end{equation*}
+where $\mu = a - b \log V_t$ and $\sigma = \sigma_{\text{TCID50}}$.
 
 Finally you also just have simple viral isolation
     \begin{equation*}

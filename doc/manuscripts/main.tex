@@ -151,20 +151,19 @@ A number of viral culture assays seek to directly detect and quantify the number
 \begin{equation*}
     V^{*}_{t,\text{culture}} \sim \text{Bernoulli}(\text{logit}^{-1}(\pi_0 + \pi_1 \log V_t)).
 \end{equation*}
-Alternatively, the number of infectious virus particles can be directly quantified by 50\% tissue culture infectious dose (TCID50), plaque forming units (PFU) assays, or focus-forming assays. For tests based on TCID50, we assume the number of days to a positive result is a function of the number of infectious virus particles in the innoculating sample and model the number of days to a positive result using the ordinal logistic model
+Alternatively, the number of infectious virus particles can be directly quantified by 50\% tissue culture infectious dose (TCID50), plaque forming units (PFU) assays, or focus-forming assays. For tests based on TCID50, we derive a mechanistic observation model from the kinetics of viral growth in culture. After inoculation with a sample containing $V_t$ infectious particles, the virus replicates exponentially in culture at rate $r$, and cytopathic effect (CPE) is detected when the viral population exceeds a threshold $V^{\dagger}$. Solving for the time to detection gives
 \begin{equation*}
-    V^{*}_{t,\text{TCID50}} \sim \text{Ordered-Logistic}(\log V_t, c).
+    d^{*} = a - b \log V_t + \varepsilon, \quad \varepsilon \sim \text{Normal}(0, \sigma_{\text{TCID50}})
 \end{equation*}
-where 
+where $a = (\log V^{\dagger} - \log c_0)/r$ absorbs the detection threshold and proportionality constant, $b = 1/r > 0$ is the inverse culture growth rate, and $\varepsilon$ captures stochastic variation in culture conditions. Since cultures are examined at daily intervals, the observed day of positivity $D \in \{2, 3, 4, 5, \text{neg}\}$ follows an interval-censored normal model:
 \begin{equation*}
-    f(k; \log V_t, c) = 
-    \begin{cases}
-        1 - \text{logit}^{-1}(\log V_t - c_1) & \text{if } k = 1 \\
-        \text{logit}^{-1}(\log V_t - c_{k-1}) - \text{logit}^{-1}(\log V_t - c_k) & \text{if } 1 < k < K \\
-        \text{logit}^{-1}(\log V_t - c_{K-1}) & \text{if } k = K
+    P(D = d \mid V_t) = \begin{cases}
+        \Phi\!\left(\frac{2 - \mu}{\sigma_{\text{TCID50}}}\right) & \text{if } d = 2 \\[4pt]
+        \Phi\!\left(\frac{d - \mu}{\sigma_{\text{TCID50}}}\right) - \Phi\!\left(\frac{d - 1 - \mu}{\sigma_{\text{TCID50}}}\right) & \text{if } d \in \{3, 4, 5\} \\[4pt]
+        1 - \Phi\!\left(\frac{5 - \mu}{\sigma_{\text{TCID50}}}\right) & \text{if } d = \text{neg}
     \end{cases}
 \end{equation*}
-i.e. $V_t$ is treated as a latent continuous variable which is censored at distinct thresholds, $c$, for each level of the ordinal outcome $k \in \{1, \ldots, K\}$. The plaque forming units (PFU) assay and focus-forming assays seek to directly characterize the amount of infectious virus in a sample by counting plaques or foci. We model the concentration of plaques or foci as a function of the true number of infectious virus particles via the log-normal model
+where $\mu = a - b \log V_t$. The plaque forming units (PFU) assay and focus-forming assays seek to directly characterize the amount of infectious virus in a sample by counting plaques or foci. We model the concentration of plaques or foci as a function of the true number of infectious virus particles via the log-normal model
 \begin{align*}
     \log V^{*}_{t,\text{FFA}} &= \log V_t + \varepsilon_{\text{FFA}} \\
     \varepsilon_{\text{FFA}} &\sim \text{Normal}(0, \sigma_{\text{FFA}})_{lod} \\
