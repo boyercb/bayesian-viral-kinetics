@@ -389,6 +389,27 @@ check_recovery <- function(fit, truth, stan_data = NULL, prob = 0.90) {
     list(truth_name = "tau_wr",  stan_var = "tau_wr", index = 2)
   )
 
+  # alpha_tcid50[1:3] and alpha_cult[1:2] — viral culture model
+  # (truth stores as vector; Stan also vector)
+  if (!is.null(truth$alpha_tcid50)) {
+    vec2_map <- c(vec2_map, list(
+      list(truth_name = "alpha_tcid50_a", stan_var = "alpha_tcid50", index = 1,
+           truth_val = truth$alpha_tcid50[1]),
+      list(truth_name = "alpha_tcid50_log_b", stan_var = "alpha_tcid50", index = 2,
+           truth_val = truth$alpha_tcid50[2]),
+      list(truth_name = "alpha_tcid50_log_sig", stan_var = "alpha_tcid50", index = 3,
+           truth_val = truth$alpha_tcid50[3])
+    ))
+  }
+  if (!is.null(truth$alpha_cult)) {
+    vec2_map <- c(vec2_map, list(
+      list(truth_name = "alpha_cult_1", stan_var = "alpha_cult", index = 1,
+           truth_val = truth$alpha_cult[1]),
+      list(truth_name = "alpha_cult_2", stan_var = "alpha_cult", index = 2,
+           truth_val = truth$alpha_cult[2])
+    ))
+  }
+
   summ <- fit$summary()
 
   # --- scalars ---
@@ -420,7 +441,9 @@ check_recovery <- function(fit, truth, stan_data = NULL, prob = 0.90) {
     )
     if (is.null(draws)) return(NULL)
     qi <- stats::quantile(draws, c(alpha, 1 - alpha))
-    true_val <- truth[[v$truth_name]]
+    # Use explicit truth_val if provided (for vector-valued truth entries),
+    # otherwise look up by truth_name in the truth list
+    true_val <- if (!is.null(v$truth_val)) v$truth_val else truth[[v$truth_name]]
     tibble::tibble(
       parameter = v$truth_name,
       true_value = true_val,

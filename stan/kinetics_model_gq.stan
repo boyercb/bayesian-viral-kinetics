@@ -213,7 +213,7 @@ parameters {
   vector[P && adj_pfu ? P : 0] beta_wp_pfu;
   vector[P && adj_pfu ? P : 0] beta_wr_pfu;
 
-  vector[4] alpha_tcid50;
+  vector[3] alpha_tcid50;  // [1]=a, [2]=log(b), [3]=log(sigma)
   vector[2] alpha_cult;
 
   real tau0_lfd_raw;
@@ -415,13 +415,30 @@ generated quantities {
           pfu_rep[n] = normal_rng(pfu_hat[n], sigma_pfu);
           if (pfu_rep[n] < lod_pfu[source[n]]) pfu_rep[n] = lod_pfu[source[n]];
         } else if (pfu_type[n] == 2) {
-          theta = inv_logit(alpha_tcid50[1] + alpha_tcid50[2] * pfu_hat[n]);
-          if (pfu[n] < 5.9) {
-            ll_pfu = bernoulli_lpmf(1 | theta);
+          // Interval-censored normal for TCID50 days-to-positivity
+          real mu_tcid = alpha_tcid50[1] - exp(alpha_tcid50[2]) * pfu_hat[n];
+          real sig_tcid = exp(alpha_tcid50[3]);
+          real d_obs = pfu[n];
+          if (d_obs >= 5.5) {
+            ll_pfu = normal_lccdf(5.0 | mu_tcid, sig_tcid);
+          } else if (d_obs <= 2.5) {
+            ll_pfu = normal_lcdf(2.0 | mu_tcid, sig_tcid);
           } else {
-            ll_pfu = bernoulli_lpmf(0 | theta);
+            real d_val = round(d_obs);
+            ll_pfu = log_diff_exp(
+              normal_lcdf(d_val | mu_tcid, sig_tcid),
+              normal_lcdf(d_val - 1.0 | mu_tcid, sig_tcid)
+            );
           }
-          pfu_rep[n] = bernoulli_rng(theta) ? 1.0 : 6.0;
+          // Posterior predictive: draw d*, discretize to {2,3,4,5,6}
+          {
+            real d_star = normal_rng(mu_tcid, sig_tcid);
+            if (d_star <= 2.0) pfu_rep[n] = 2.0;
+            else if (d_star <= 3.0) pfu_rep[n] = 3.0;
+            else if (d_star <= 4.0) pfu_rep[n] = 4.0;
+            else if (d_star <= 5.0) pfu_rep[n] = 5.0;
+            else pfu_rep[n] = 6.0;
+          }
         } else if (pfu_type[n] == 3) {
           theta = inv_logit(alpha_cult[1] + alpha_cult[2] * pfu_hat[n]);
           ll_pfu = bernoulli_lpmf(to_int(pfu[n]) | theta);

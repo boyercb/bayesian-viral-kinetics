@@ -99,7 +99,7 @@ build_init <- function(stan_data, chains = 4) {
       tau_lfd  = c(0.1, 0.1),
 
       # viral culture models
-      alpha_tcid50 = c(0, 0.1, 0, 0.1),
+      alpha_tcid50 = c(8, -0.5, 0),  # [a, log(b), log(sigma)]
       alpha_cult   = c(0, 0.1)
     )
 
@@ -1133,7 +1133,15 @@ default_params <- function(data) {
 
     # --- correlated RNA individual effects (only used when ind_corr = 1) ---
     sigma_ind_rna = rep(0.5, 4),  # SD of (tp, dp, wp, wr) RNA effects
-    Omega_rna = diag(4)           # 4×4 correlation matrix (identity = no corr)
+    Omega_rna = diag(4),          # 4×4 correlation matrix (identity = no corr)
+
+    # --- viral culture model coefficients ---
+    # alpha_tcid50: interval-censored normal for TCID50 days-to-positivity
+    #   [1]=a (intercept), [2]=log(b) (inv culture growth rate), [3]=log(sigma)
+    #   d* = a - exp(log_b) * pfu_hat + N(0, exp(log_sigma))
+    alpha_tcid50 = c(8, -0.5, 0),  # a=8, b≈0.6, sigma≈1 day
+    # alpha_cult: vector[2] in Stan, [1]=intercept, [2]=slope
+    alpha_cult = c(-2, 0.5)        # logistic(intercept + slope * pfu_hat)
   )
 }
 
@@ -1418,18 +1426,40 @@ simulate_data <- function(data, params = NULL, seed = 42) {
 
   # ─── Draw noisy observations ─────────────────────────────────────────────
   rna_obs <- rnorm(N_obs, rna_hat, sigma_rna)
-  pfu_obs <- rnorm(N_obs, pfu_hat, sigma_pfu)
+  pfu_obs <- rnorm(N_obs, pfu_hat, sigma_pfu)  # initial: all continuous
   lfd_obs <- rbinom(N_obs, 1, lfd_hat)
   sym_obs <- rbinom(N_obs, 1, sym_hat)
 
-  # Test error contamination
-  # The Stan model treats fp/fn/true as mutually exclusive mixture components:
-  #   P(obs | above LOD) = fp * Exp(fp_mean) + (1-fp)(1-fn) * Normal(rna_hat, sigma)
-  #   P(obs | below LOD) = (1-fn) * Phi_normal(lod | rna_hat, sigma)
-  # So we sample from the same three-component mixture:
-  #   component 0 = true observation (weight (1-fp)*(1-fn))
-  #   component 1 = false positive   (weight fp)
-  #   component 2 = false negative   (weight fn*(1-fp))
+  # ─── PFU type-specific observation generation ────────────────────────────
+  # Type 1 (continuous PFU): already drawn above from N(pfu_hat, sigma_pfu)
+  # Type 2 (TCID50): interval-censored normal for days-to-positivity.
+  #   Mechanistic: d* = a - b*pfu_hat + eps, eps ~ N(0, sigma)
+  #   Observed categories: 2,3,4,5 (days to CPE) or 6 (negative)
+  pfu_type_vec <- data$pfu_type
+  is_type2 <- pfu_type_vec == 2 & data$pfu_exist == 1
+  if (any(is_type2)) {
+    mu_tcid <- params$alpha_tcid50[1] - exp(params$alpha_tcid50[2]) * pfu_hat[is_type2]
+    sig_tcid <- exp(params$alpha_tcid50[3])
+    d_star <- rnorm(sum(is_type2), mu_tcid, sig_tcid)
+    # Discretize to observed categories: {2, 3, 4, 5, 6}
+    pfu_obs[is_type2] <- ifelse(d_star <= 2, 2,
+                         ifelse(d_star <= 3, 3,
+                         ifelse(d_star <= 4, 4,
+                         ifelse(d_star <= 5, 5, 6))))
+  }
+
+  # Type 3 (binary culture): binary outcome via logistic model.
+  #   Stan: to_int(pfu_obs) → Bernoulli(theta)
+  is_type3 <- pfu_type_vec == 3 & data$pfu_exist == 1
+  if (any(is_type3)) {
+    theta3 <- plogis(params$alpha_cult[1] +
+                     params$alpha_cult[2] * pfu_hat[is_type3])
+    pfu_obs[is_type3] <- as.numeric(rbinom(sum(is_type3), 1, theta3))
+  }
+
+  # ─── Test error contamination (type-1 continuous PFU and RNA only) ───────
+  # The Stan model only applies fp/fn mixture to type-1 PFU and RNA.
+  # TCID50 (type 2) and binary culture (type 3) use separate Bernoulli models.
   if (data$test_error) {
     fp_val <- params$fp
     fn_val <- params$fn
@@ -1440,18 +1470,24 @@ simulate_data <- function(data, params = NULL, seed = 42) {
     rna_error <- rexp(N_obs, data$fp_mean[source])
     pfu_error <- rexp(N_obs, data$fp_mean[source])
 
+    # RNA test error (applies to all RNA observations)
     rna_obs[component_rna == 1] <- rna_error[component_rna == 1] +
       lod_rna_vec[component_rna == 1]
     rna_obs[component_rna == 2] <- lod_rna_vec[component_rna == 2]
 
-    pfu_obs[component_pfu == 1] <- pfu_error[component_pfu == 1] +
-      lod_pfu_vec[component_pfu == 1]
-    pfu_obs[component_pfu == 2] <- lod_pfu_vec[component_pfu == 2]
+    # PFU test error — only for type-1 (continuous) observations
+    is_type1 <- pfu_type_vec == 1
+    fp_mask <- component_pfu == 1 & is_type1
+    fn_mask <- component_pfu == 2 & is_type1
+    pfu_obs[fp_mask] <- pfu_error[fp_mask] + lod_pfu_vec[fp_mask]
+    pfu_obs[fn_mask] <- lod_pfu_vec[fn_mask]
   }
 
-  # Censor below LOD
+  # Censor below LOD (only for continuous-scale observations)
   rna_obs <- pmax(rna_obs, lod_rna_vec)
-  pfu_obs <- pmax(pfu_obs, lod_pfu_vec)
+  # PFU LOD censoring only for type-1; type-2/3 are binary-encoded
+  is_type1_all <- pfu_type_vec == 1
+  pfu_obs[is_type1_all] <- pmax(pfu_obs[is_type1_all], lod_pfu_vec[is_type1_all])
 
   # ═══════════════════════════════════════════════════════════════════════════
   # Package output
@@ -1498,6 +1534,9 @@ simulate_data <- function(data, params = NULL, seed = 42) {
     wp_k_pfu = wp_k_pfu, wr_k_pfu = wr_k_pfu,
     lfd_k    = lfd_k,    to_k_sym = to_k_sym,
     wf_i     = wf_i,    wf_k     = wf_k,
+    # viral culture model coefficients
+    alpha_tcid50 = params$alpha_tcid50,
+    alpha_cult   = params$alpha_cult,
     # covariate effects
     beta_dp_rna = beta_dp_rna, beta_wp_rna = beta_wp_rna,
     beta_wr_rna = beta_wr_rna,
