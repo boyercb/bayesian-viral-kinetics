@@ -81,7 +81,7 @@ list(
                       adj_rna     = 1,
                       ind_corr    = 1,
                       use_smooth  = 1,
-                      use_wf      = 1
+                      use_wf      = 0
                     ))
   ),
 

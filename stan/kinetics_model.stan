@@ -258,11 +258,27 @@ functions {
             }
           }
         } else if (pfu_type_obs[nn] == 2) {
-          real theta = inv_logit(alpha_tcid50_arg[1] + alpha_tcid50_arg[2] * pfu_hat_n);
-          if (pfu_obs[nn] < 5.9) {
-            ll_pfu = bernoulli_lpmf(1 | theta);
+          // Interval-censored normal regression for TCID50 days-to-positivity.
+          // Mechanistic: d* = a - b*log(V_t) + eps, eps ~ N(0, sigma)
+          //   where b = exp(alpha[2]) > 0 is inverse culture growth rate,
+          //   sigma = exp(alpha[3]) > 0 is scale of stochastic variation.
+          // pfu_obs: 2,3,4,5 = days to CPE; 6 = negative (no CPE by day 5).
+          real mu_tcid = alpha_tcid50_arg[1] - exp(alpha_tcid50_arg[2]) * pfu_hat_n;
+          real sig_tcid = exp(alpha_tcid50_arg[3]);
+          real d_obs = pfu_obs[nn];
+          if (d_obs >= 5.5) {
+            // Negative result: right-censored beyond day 5
+            ll_pfu = normal_lccdf(5.0 | mu_tcid, sig_tcid);
+          } else if (d_obs <= 2.5) {
+            // Day 2: left-censored at day 2
+            ll_pfu = normal_lcdf(2.0 | mu_tcid, sig_tcid);
           } else {
-            ll_pfu = bernoulli_lpmf(0 | theta);
+            // Days 3,4,5: interval (d-1, d]
+            real d_val = round(d_obs);
+            ll_pfu = log_diff_exp(
+              normal_lcdf(d_val | mu_tcid, sig_tcid),
+              normal_lcdf(d_val - 1.0 | mu_tcid, sig_tcid)
+            );
           }
         } else if (pfu_type_obs[nn] == 3) {
           real theta = inv_logit(alpha_cult_arg[1] + alpha_cult_arg[2] * pfu_hat_n);
@@ -486,8 +502,9 @@ parameters {
   vector[P && adj_pfu ? P : 0] beta_wp_pfu;
   vector[P && adj_pfu ? P : 0] beta_wr_pfu;
   
-  // coefficient for transforming time to cell culture to PFUs
-  vector[4] alpha_tcid50;
+  // TCID50 interval-censored regression: [1]=a (intercept),
+  // [2]=log(b) (inverse culture growth rate), [3]=log(sigma) (scale)
+  vector[3] alpha_tcid50;
   
   // coefficient for binary culture result to PFUs 
   vector[2] alpha_cult;
@@ -619,7 +636,7 @@ model {
 
   // RNA individual effects: correlated (Cholesky NCP) or independent
   if (ind_corr) {
-    L_Omega_rna ~ lkj_corr_cholesky(2);  // LKJ(2): mild shrinkage toward identity
+    L_Omega_rna ~ lkj_corr_cholesky(4);  // LKJ(4): moderate shrinkage toward identity
     sigma_ind_rna ~ normal(0, prior_i_sd) T[0, ];
     to_vector(z_ind_rna) ~ std_normal();
   } else {
@@ -695,7 +712,10 @@ model {
   tau_wp[2] ~ normal(1, 0.5) T[0, ];  // log-affine elasticity (positive)
   tau_wr[2] ~ normal(1, 0.5) T[0, ];  // log-affine elasticity (positive)
 
-  alpha_tcid50 ~ normal(0, prior_beta_sd);
+  // TCID50 interval-censored regression priors
+  alpha_tcid50[1] ~ normal(8, 3);       // intercept a: d*≈2 at high VL
+  alpha_tcid50[2] ~ normal(-0.5, 1);    // log(b): b≈0.6, inverse culture growth rate
+  alpha_tcid50[3] ~ normal(0, 1);       // log(sigma): sigma≈1 day
   alpha_cult ~ normal(0, prior_beta_sd);
 
   tau0_lfd_raw ~ std_normal();
