@@ -207,7 +207,19 @@ functions {
         if (source_rna)  wf = wf * exp(wf_k_arg[k]);
       }
 
+      // ── RNA hat (computed first — needed for PFU ≤ RNA constraint) ───────
+      real rna_hat_n;
+      if (use_smooth) {
+        rna_hat_n = safe_vl(smooth(time_obs[nn], tp_rna, wp_rna, wr_rna, dp_rna, wf));
+      } else {
+        rna_hat_n = safe_vl(piecewise(time_obs[nn], tp_rna, wp_rna, wr_rna, dp_rna, wf));
+      }
+
       // ── PFU trajectory ───────────────────────────────────────────────────
+      // Population PFU params derived from RNA via log-affine transform.
+      // Individual RNA variation propagates automatically through dp_rna etc.
+      // Residual PFU REs (dp_i_pfu etc.) capture variation NOT explained by
+      // the RNA→PFU propagation, with sigma_resid_pfu controlling their scale.
       real tp_pfu = tau_tp_arg[1] + tau_tp_arg[2] * tp_rna + tp_i_pfu_arg[i];
       real dp_pfu = log_affine(tau_dp_arg[1], tau_dp_arg[2], dp_rna);
       real wp_pfu = log_affine(tau_wp_arg[1], tau_wp_arg[2], wp_rna);
@@ -240,6 +252,8 @@ functions {
       } else {
         pfu_hat_n = safe_vl(piecewise(time_obs[nn], tp_pfu, wp_pfu, wr_pfu, dp_pfu, wf));
       }
+      // Biological constraint: infectious virus ≤ total viral RNA
+      pfu_hat_n = fmin(pfu_hat_n, rna_hat_n);
 
       // ── PFU likelihood ───────────────────────────────────────────────────
       if (pfu_exist_obs[nn] == 1) {
@@ -287,14 +301,6 @@ functions {
           ll_pfu = 0.0;
         }
         ll += ll_pfu;
-      }
-
-      // ── RNA hat ──────────────────────────────────────────────────────────
-      real rna_hat_n;
-      if (use_smooth) {
-        rna_hat_n = safe_vl(smooth(time_obs[nn], tp_rna, wp_rna, wr_rna, dp_rna, wf));
-      } else {
-        rna_hat_n = safe_vl(piecewise(time_obs[nn], tp_rna, wp_rna, wr_rna, dp_rna, wf));
       }
 
       // ── RNA likelihood ───────────────────────────────────────────────────
@@ -419,6 +425,8 @@ data {
 
   real<lower=0> prior_wf_mean;  // prior mean for flat-top duration (days)
   real<lower=0> prior_wf_cv;    // prior CV for flat-top duration (NCP scale)
+
+  real<lower=0> prior_resid_pfu_sd;  // prior scale for residual PFU RE SDs (mode 2)
 }
 
 transformed data {
@@ -485,8 +493,11 @@ parameters {
   vector[2] tau_wp; // proliferation time 
   vector[2] tau_wr; // clearance time 
 
-  // individual effects: PFU
-  vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE standard deviations (learned)
+  // individual effects: PFU (mode 2 — residual)
+  // These capture PFU individual variation NOT explained by the log-affine
+  // propagation of RNA individual effects.  Most PFU variation comes from
+  // a_1 * u_i^RNA; sigma_resid_pfu captures the remainder.
+  vector<lower=0>[ind_effects ? 4 : 1] sigma_resid_pfu;  // residual PFU RE SDs
   array[sum(M)] real tp_i_pfu; // onset
   array[sum(M) && ind_effects ? sum(M) : 0] real dp_i_pfu; // peak
   array[sum(M) && ind_effects ? sum(M) : 0] real wp_i_pfu; // proliferation time
@@ -632,8 +643,8 @@ model {
   // Validation: ind_corr requires ind_effects
   if (ind_corr && !ind_effects) reject("ind_corr requires ind_effects = 1");
 
-  sigma_ind_pfu ~ normal(0, prior_i_sd) T[0, ];  // half-normal prior on PFU RE SDs
-  tp_i_pfu ~ normal(0, sigma_ind_pfu[1]);
+  sigma_resid_pfu ~ normal(0, prior_resid_pfu_sd) T[0, ];  // half-normal prior; tighter than RNA (residual)
+  tp_i_pfu ~ normal(0, sigma_resid_pfu[1]);
   z_sym ~ std_normal();  // NCP for symptom random effects
 
   // RNA individual effects: correlated (Cholesky NCP) or independent
@@ -651,9 +662,9 @@ model {
   }
 
   if (ind_effects) {
-    dp_i_pfu ~ normal(0, sigma_ind_pfu[2]);
-    wp_i_pfu ~ normal(0, sigma_ind_pfu[3]);
-    wr_i_pfu ~ normal(0, sigma_ind_pfu[4]);
+    dp_i_pfu ~ normal(0, sigma_resid_pfu[2]);
+    wp_i_pfu ~ normal(0, sigma_resid_pfu[3]);
+    wr_i_pfu ~ normal(0, sigma_resid_pfu[4]);
   }
 
   if (source_pfu) {

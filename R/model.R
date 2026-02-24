@@ -64,11 +64,12 @@ build_init <- function(stan_data, chains = 4) {
   K     <- stan_data$K
   lapply(seq_len(chains), function(x) {
     init <- list(
-      # PFU individual effects (always independent)
+      # PFU individual effects (mode 2 — residual)
       tp_i_pfu  = rep(0, N_ind),
       dp_i_pfu  = rep(0, N_ind),
       wp_i_pfu  = rep(0, N_ind),
       wr_i_pfu  = rep(0, N_ind),
+      sigma_resid_pfu = rep(0.15, if (stan_data$ind_effects) 4 else 1),
       z_sym     = rep(0, N_ind),
 
       # population kinetics (NCP raw values → at 0 = prior mode)

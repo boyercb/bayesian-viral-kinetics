@@ -148,6 +148,8 @@ data {
 
   real<lower=0> prior_wf_mean;
   real<lower=0> prior_wf_cv;
+
+  real<lower=0> prior_resid_pfu_sd;  // prior scale for residual PFU RE SDs (mode 2)
 }
 
 transformed data {
@@ -199,7 +201,7 @@ parameters {
   vector[2] tau_wp;
   vector[2] tau_wr;
 
-  vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE standard deviations (learned)
+  vector<lower=0>[ind_effects ? 4 : 1] sigma_resid_pfu;  // residual PFU RE SDs
   array[sum(M)] real tp_i_pfu;
   array[sum(M) && ind_effects ? sum(M) : 0] real dp_i_pfu;
   array[sum(M) && ind_effects ? sum(M) : 0] real wp_i_pfu;
@@ -374,6 +376,8 @@ generated quantities {
       } else {
         pfu_hat[n] = safe_vl(piecewise(time[n], tp_pfu, wp_pfu, wr_pfu, dp_pfu, wf));
       }
+      // Biological constraint: infectious virus ≤ total viral RNA
+      pfu_hat[n] = fmin(pfu_hat[n], rna_hat[n]);
 
       // ---- RNA log-likelihood + posterior predictive ----
       if (rna_exist[n] == 1) {

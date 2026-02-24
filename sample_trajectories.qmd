@@ -90,18 +90,27 @@ glimpse(traj)
 ```{r plot-single-vl}
 #| fig-height: 5
 
+# Pivot to long format, keeping only days where each marker is above its LOD.
+# The detection window spans any day where RNA *or* PFU is detectable; PFU
+# typically has a narrower window than RNA, so without filtering the PFU
+# panel would show latent values deep below LOD.
 traj_long <- traj |>
-  select(draw, day_since_detectable, log_rna, log_pfu) |>
+  select(draw, day_since_detectable, log_rna, log_pfu,
+         rna_detectable, pfu_detectable) |>
   pivot_longer(c(log_rna, log_pfu),
                names_to = "marker", values_to = "value") |>
-  mutate(marker = recode(marker,
-    log_rna = "RNA (log copies/mL)",
-    log_pfu = "PFU (log PFU/mL)"
-  ))
+  mutate(
+    detectable = if_else(marker == "log_rna", rna_detectable, pfu_detectable),
+    marker = recode(marker,
+      log_rna = "RNA (log copies/mL)",
+      log_pfu = "PFU (log PFU/mL)"
+    )
+  ) |>
+  filter(detectable)
 
 ggplot(traj_long, aes(day_since_detectable, value, group = draw)) +
   geom_line(alpha = 0.08, colour = "steelblue") +
-  facet_wrap(~marker, scales = "free_y") +
+  facet_wrap(~marker) + #scales = "free") +
   labs(
     x = "Days since first detectable",
     y = "Viral load (log scale)",
@@ -178,28 +187,39 @@ traj2 <- sample_trajectories(
 ```{r plot-multi-envelope}
 #| fig-height: 8
 
-summary_traj <- traj2 |>
+summary_rna <- traj2 |>
+  filter(rna_detectable) |>
   group_by(label, day_since_detectable) |>
   summarise(
     rna_med = median(log_rna),
     rna_lo  = quantile(log_rna, 0.1),
     rna_hi  = quantile(log_rna, 0.9),
+    n_draws = n(),
+    .groups = "drop"
+  ) |>
+  filter(n_draws >= 0.2 * 200)
+
+summary_pfu <- traj2 |>
+  filter(pfu_detectable) |>
+  group_by(label, day_since_detectable) |>
+  summarise(
     pfu_med = median(log_pfu),
     pfu_lo  = quantile(log_pfu, 0.1),
     pfu_hi  = quantile(log_pfu, 0.9),
     n_draws = n(),
     .groups = "drop"
   ) |>
-  # Only show days with at least 20% of draws contributing
   filter(n_draws >= 0.2 * 200)
 
-ggplot(summary_traj, aes(day_since_detectable)) +
-  geom_ribbon(aes(ymin = rna_lo, ymax = rna_hi),
+ggplot(mapping = aes(x = day_since_detectable)) +
+  geom_ribbon(data = summary_rna, aes(ymin = rna_lo, ymax = rna_hi),
               alpha = 0.2, fill = "firebrick") +
-  geom_line(aes(y = rna_med), colour = "firebrick", linewidth = 0.8) +
-  geom_ribbon(aes(ymin = pfu_lo, ymax = pfu_hi),
+  geom_line(data = summary_rna, aes(y = rna_med),
+            colour = "firebrick", linewidth = 0.8) +
+  geom_ribbon(data = summary_pfu, aes(ymin = pfu_lo, ymax = pfu_hi),
               alpha = 0.2, fill = "steelblue") +
-  geom_line(aes(y = pfu_med), colour = "steelblue", linewidth = 0.8) +
+  geom_line(data = summary_pfu, aes(y = pfu_med),
+            colour = "steelblue", linewidth = 0.8) +
   facet_wrap(~label, ncol = 1) +
   labs(
     x = "Days since first detectable",
@@ -376,6 +396,8 @@ are carried through to the output for easy grouping.
 | `day_since_detectable` | numeric | Days since first detection (≥ 0)   |
 | `log_rna`              | numeric | True log RNA (ln copies/mL)        |
 | `log_pfu`              | numeric | True log PFU/mL                    |
+| `rna_detectable`       | logical | Is true RNA above LOD?             |
+| `pfu_detectable`       | logical | Is true PFU above LOD?             |
 | `rna`                  | numeric | Measured log RNA                   |
 | `pfu`                  | numeric | Measured log PFU                   |
 | `lfd`                  | int/num | LFD result (0/1 or probability)    |
