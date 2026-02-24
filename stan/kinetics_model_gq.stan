@@ -199,6 +199,7 @@ parameters {
   vector[2] tau_wp;
   vector[2] tau_wr;
 
+  vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE standard deviations (learned)
   array[sum(M)] real tp_i_pfu;
   array[sum(M) && ind_effects ? sum(M) : 0] real dp_i_pfu;
   array[sum(M) && ind_effects ? sum(M) : 0] real wp_i_pfu;

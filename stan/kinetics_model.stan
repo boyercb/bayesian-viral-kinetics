@@ -486,6 +486,7 @@ parameters {
   vector[2] tau_wr; // clearance time 
 
   // individual effects: PFU
+  vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE standard deviations (learned)
   array[sum(M)] real tp_i_pfu; // onset
   array[sum(M) && ind_effects ? sum(M) : 0] real dp_i_pfu; // peak
   array[sum(M) && ind_effects ? sum(M) : 0] real wp_i_pfu; // proliferation time
@@ -631,7 +632,8 @@ model {
   // Validation: ind_corr requires ind_effects
   if (ind_corr && !ind_effects) reject("ind_corr requires ind_effects = 1");
 
-  tp_i_pfu ~ normal(0, prior_i_sd);
+  sigma_ind_pfu ~ normal(0, prior_i_sd) T[0, ];  // half-normal prior on PFU RE SDs
+  tp_i_pfu ~ normal(0, sigma_ind_pfu[1]);
   z_sym ~ std_normal();  // NCP for symptom random effects
 
   // RNA individual effects: correlated (Cholesky NCP) or independent
@@ -649,9 +651,9 @@ model {
   }
 
   if (ind_effects) {
-    dp_i_pfu ~ normal(0, prior_i_sd);
-    wp_i_pfu ~ normal(0, prior_i_sd);
-    wr_i_pfu ~ normal(0, prior_i_sd);
+    dp_i_pfu ~ normal(0, sigma_ind_pfu[2]);
+    wp_i_pfu ~ normal(0, sigma_ind_pfu[3]);
+    wr_i_pfu ~ normal(0, sigma_ind_pfu[4]);
   }
 
   if (source_pfu) {

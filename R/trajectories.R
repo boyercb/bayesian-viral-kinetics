@@ -113,6 +113,8 @@ build_agent_covariates <- function(agents) {
 #'           (starts at 0)}
 #'     \item{log_rna}{Latent log RNA (ln copies/mL, true trajectory)}
 #'     \item{log_pfu}{Latent log PFU/mL (true trajectory)}
+#'     \item{rna_detectable}{Logical: is the true latent RNA above LOD?}
+#'     \item{pfu_detectable}{Logical: is the true latent PFU above LOD?}
 #'     \item{rna}{Measured RNA: with noise + LOD censoring when
 #'           \code{include_noise = TRUE}; equals \code{log_rna} otherwise}
 #'     \item{pfu}{Measured PFU: with noise + LOD censoring when
@@ -186,6 +188,27 @@ sample_trajectories <- function(
   if (has_adj_pfu) vars <- c(vars, "beta_dp_pfu", "beta_wp_pfu", "beta_wr_pfu")
   if (has_wf)      vars <- c(vars, "wf_raw")
 
+  # ── PFU individual-effect SDs ───────────────────────────────────────────────
+
+  # Newer Stan model:  sigma_ind_pfu is an estimated parameter (analogous to
+  # sigma_ind_rna).  If present, we use it directly.
+  # Older fits:  PFU REs had a fixed prior_i_sd, so sigma_ind_pfu is missing.
+  #   Fall back to extracting all individual PFU REs and computing empirical
+  #   per-draw SDs (slower, but correct).
+  all_param_names <- fit$metadata()$model_params
+  has_sigma_ind_pfu <- "sigma_ind_pfu" %in% all_param_names
+
+  if (has_sigma_ind_pfu) {
+    vars <- c(vars, "sigma_ind_pfu")
+  } else {
+    message("sigma_ind_pfu not found in posterior — using empirical SD workaround")
+    if (has_ind) {
+      vars <- c(vars, "tp_i_pfu", "dp_i_pfu", "wp_i_pfu", "wr_i_pfu")
+    } else {
+      vars <- c(vars, "tp_i_pfu")
+    }
+  }
+
   # ── Extract and thin draws ────────────────────────────────────────────────
   drws <- posterior::as_draws_matrix(fit$draws(variables = vars))
   n_total <- nrow(drws)
@@ -198,6 +221,35 @@ sample_trajectories <- function(
                  dimnames = dimnames(drws))
   nd <- nrow(drws)  # actual draws used
   P  <- stan_data$P
+
+  # ── Resolve PFU RE SDs per draw ───────────────────────────────────────────
+  if (has_sigma_ind_pfu) {
+    # Direct: sigma_ind_pfu[1..4] (or [1] when no ind_effects)
+    sd_pfu <- list(
+      tp = drws[, "sigma_ind_pfu[1]"],
+      dp = if (has_ind) drws[, "sigma_ind_pfu[2]"] else rep(0, nd),
+      wp = if (has_ind) drws[, "sigma_ind_pfu[3]"] else rep(0, nd),
+      wr = if (has_ind) drws[, "sigma_ind_pfu[4]"] else rep(0, nd)
+    )
+  } else {
+    # Fallback: compute per-draw empirical SDs from individual effects
+    N_ind <- sum(stan_data$M)
+    pfu_re_nms <- list(
+      tp = paste0("tp_i_pfu[", 1:N_ind, "]"),
+      dp = if (has_ind) paste0("dp_i_pfu[", 1:N_ind, "]") else NULL,
+      wp = if (has_ind) paste0("wp_i_pfu[", 1:N_ind, "]") else NULL,
+      wr = if (has_ind) paste0("wr_i_pfu[", 1:N_ind, "]") else NULL
+    )
+    sd_pfu <- list(
+      tp = apply(drws[, pfu_re_nms$tp, drop = FALSE], 1, sd),
+      dp = if (has_ind) apply(drws[, pfu_re_nms$dp, drop = FALSE], 1, sd) else rep(0, nd),
+      wp = if (has_ind) apply(drws[, pfu_re_nms$wp, drop = FALSE], 1, sd) else rep(0, nd),
+      wr = if (has_ind) apply(drws[, pfu_re_nms$wr, drop = FALSE], 1, sd) else rep(0, nd)
+    )
+    # Drop the per-individual PFU RE columns to save memory
+    pfu_re_all <- unlist(pfu_re_nms, use.names = FALSE)
+    drws <- drws[, !(colnames(drws) %in% pfu_re_all), drop = FALSE]
+  }
 
   message(sprintf(
     "Sampling %d trajectories (%d agents \u00d7 %d draws)...",
@@ -276,11 +328,11 @@ sample_trajectories <- function(
         wr_re <- if (has_ind) rnorm(1, 0, prior_i_sd) else 0
       }
 
-      # PFU effects: independent, from prior distribution
-      tp_pfu_re <- rnorm(1, 0, prior_i_sd)
-      dp_pfu_re <- if (has_ind) rnorm(1, 0, prior_i_sd) else 0
-      wp_pfu_re <- if (has_ind) rnorm(1, 0, prior_i_sd) else 0
-      wr_pfu_re <- if (has_ind) rnorm(1, 0, prior_i_sd) else 0
+      # PFU effects: independent, using posterior-learned population SDs
+      tp_pfu_re <- rnorm(1, 0, sd_pfu$tp[d])
+      dp_pfu_re <- if (has_ind) rnorm(1, 0, sd_pfu$dp[d]) else 0
+      wp_pfu_re <- if (has_ind) rnorm(1, 0, sd_pfu$wp[d]) else 0
+      wr_pfu_re <- if (has_ind) rnorm(1, 0, sd_pfu$wr[d]) else 0
 
       # Symptom RE
       z_sym <- rnorm(1)
@@ -377,8 +429,8 @@ sample_trajectories <- function(
         day                  = tw,
         day_since_detectable = tw - tw[1],
         log_rna              = rna[w],
-        log_pfu              = pfu[w],
-        rna                  = rna_m,
+        log_pfu              = pfu[w],        rna_detectable       = rna[w] > lod_rna,
+        pfu_detectable       = pfu[w] > lod_pfu,        rna                  = rna_m,
         pfu                  = pfu_m,
         lfd                  = lfd_o,
         symptomatic          = sym_o
