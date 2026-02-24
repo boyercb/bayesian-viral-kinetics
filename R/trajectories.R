@@ -198,15 +198,19 @@ sample_trajectories <- function(
   all_param_names <- fit$metadata()$model_params
   has_sigma_ind_pfu <- "sigma_ind_pfu" %in% all_param_names
 
+  # Pre-compute PFU-informed individual IDs for the fallback path
+  pfu_informed <- NULL
+  if (!has_sigma_ind_pfu) {
+    pfu_informed <- which(tapply(
+      stan_data$pfu_exist, stan_data$id, function(x) any(x == 1)
+    ))
+  }
+
   if (has_sigma_ind_pfu) {
     vars <- c(vars, "sigma_ind_pfu")
   } else {
-    message("sigma_ind_pfu not found in posterior — using empirical SD workaround")
-    if (has_ind) {
-      vars <- c(vars, "tp_i_pfu", "dp_i_pfu", "wp_i_pfu", "wr_i_pfu")
-    } else {
-      vars <- c(vars, "tp_i_pfu")
-    }
+    message("sigma_ind_pfu not found in posterior \u2014 using variance decomposition workaround")
+    # PFU REs are extracted separately below (not added to vars)
   }
 
   # ── Extract and thin draws ────────────────────────────────────────────────
@@ -232,23 +236,63 @@ sample_trajectories <- function(
       wr = if (has_ind) drws[, "sigma_ind_pfu[4]"] else rep(0, nd)
     )
   } else {
-    # Fallback: compute per-draw empirical SDs from individual effects
+    # Fallback: estimate population SDs of PFU individual effects via
+    # variance decomposition (needed until sigma_ind_pfu is fitted).
+    #
+    # Problem: with prior_i_sd=1 and sparse PFU data (~5-10 obs per person),
+    # each individual's posterior RE is wide.  The per-draw empirical SD
+    # across individuals conflates TRUE population variation with posterior
+    # uncertainty:
+    #     Var_between(draw d) = Var_pop + mean(Var_posterior_i)
+    #
+    # We correct this by subtracting the average within-individual posterior
+    # variance (computed across MCMC draws) from the per-draw between-
+    # individual variance:
+    #     Var_pop ≈ max(0, Var_between - mean(Var_posterior_i))
     N_ind <- sum(stan_data$M)
+    message(sprintf("  Using %d PFU-informed individuals (of %d total) for variance decomposition",
+                    length(pfu_informed), N_ind))
+
+    # We need ALL draws (not thinned) for accurate per-individual variance
+    # estimation.  Extract the PFU RE columns from the full fit.
     pfu_re_nms <- list(
-      tp = paste0("tp_i_pfu[", 1:N_ind, "]"),
-      dp = if (has_ind) paste0("dp_i_pfu[", 1:N_ind, "]") else NULL,
-      wp = if (has_ind) paste0("wp_i_pfu[", 1:N_ind, "]") else NULL,
-      wr = if (has_ind) paste0("wr_i_pfu[", 1:N_ind, "]") else NULL
+      tp = paste0("tp_i_pfu[", pfu_informed, "]"),
+      dp = if (has_ind) paste0("dp_i_pfu[", pfu_informed, "]") else NULL,
+      wp = if (has_ind) paste0("wp_i_pfu[", pfu_informed, "]") else NULL,
+      wr = if (has_ind) paste0("wr_i_pfu[", pfu_informed, "]") else NULL
     )
+    all_pfu_vars <- unlist(pfu_re_nms, use.names = FALSE)
+    full_pfu_drws <- posterior::as_draws_matrix(fit$draws(variables = all_pfu_vars))
+    full_pfu_drws <- matrix(as.numeric(full_pfu_drws), nrow = nrow(full_pfu_drws),
+                            dimnames = dimnames(full_pfu_drws))
+
+    .decompose_sd <- function(mat) {
+      # Per-individual posterior variance (across draws)
+      post_var_i <- apply(mat, 2, var)
+      avg_post_var <- mean(post_var_i)
+      # Per-draw between-individual variance
+      between_var <- apply(mat, 1, var)
+      # Population variance = between - average posterior uncertainty
+      pop_var <- pmax(between_var - avg_post_var, 0)
+      sqrt(pop_var)
+    }
+
     sd_pfu <- list(
-      tp = apply(drws[, pfu_re_nms$tp, drop = FALSE], 1, sd),
-      dp = if (has_ind) apply(drws[, pfu_re_nms$dp, drop = FALSE], 1, sd) else rep(0, nd),
-      wp = if (has_ind) apply(drws[, pfu_re_nms$wp, drop = FALSE], 1, sd) else rep(0, nd),
-      wr = if (has_ind) apply(drws[, pfu_re_nms$wr, drop = FALSE], 1, sd) else rep(0, nd)
+      tp = .decompose_sd(full_pfu_drws[, pfu_re_nms$tp, drop = FALSE]),
+      dp = if (has_ind) .decompose_sd(full_pfu_drws[, pfu_re_nms$dp, drop = FALSE]) else rep(0, nrow(full_pfu_drws)),
+      wp = if (has_ind) .decompose_sd(full_pfu_drws[, pfu_re_nms$wp, drop = FALSE]) else rep(0, nrow(full_pfu_drws)),
+      wr = if (has_ind) .decompose_sd(full_pfu_drws[, pfu_re_nms$wr, drop = FALSE]) else rep(0, nrow(full_pfu_drws))
     )
-    # Drop the per-individual PFU RE columns to save memory
-    pfu_re_all <- unlist(pfu_re_nms, use.names = FALSE)
-    drws <- drws[, !(colnames(drws) %in% pfu_re_all), drop = FALSE]
+
+    message(sprintf("  Variance-decomposed PFU RE SDs (mean): tp=%.3f dp=%.3f wp=%.3f wr=%.3f",
+                    mean(sd_pfu$tp), mean(sd_pfu$dp), mean(sd_pfu$wp), mean(sd_pfu$wr)))
+
+    # Thin sd_pfu to match the thinned draws
+    if (n_total > n_draws) {
+      sd_pfu <- lapply(sd_pfu, function(s) s[idx])
+    }
+    nd_check <- nrow(drws)
+    stopifnot(length(sd_pfu$tp) == nd_check)
   }
 
   message(sprintf(
@@ -382,7 +426,8 @@ sample_trajectories <- function(
 
       # Clamp to safe range (matches Stan's safe_vl)
       rna <- pmax(pmin(rna, 50), -50)
-      pfu <- pmax(pmin(pfu, 50), -50)
+      # PFU clamped to RNA: infectious virus cannot exceed total viral RNA
+      pfu <- pmax(pmin(pfu, rna), -50)
 
       # ── Detection window ──────────────────────────────────────────────────
       det <- rna > lod_rna | pfu > lod_pfu
