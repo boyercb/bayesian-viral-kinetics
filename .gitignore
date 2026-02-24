@@ -35,6 +35,9 @@ vignettes/*.pdf
 *.utf8.md
 *.knit.md
 
+# rendered quarto / rmarkdown output
+*.html
+
 # R Environment Variables
 .Renviron
 

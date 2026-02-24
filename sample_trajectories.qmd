@@ -1,0 +1,382 @@
+---
+title: "Sampling Viral Shedding Trajectories"
+subtitle: "Using the Bayesian joint model for agent-based simulation"
+author: "Christopher Boyer"
+date: today
+format:
+  html:
+    embed-resources: true
+    self-contained: true
+    toc: true
+    code-fold: false
+    fig-width: 9
+    fig-height: 5
+    theme: cosmo
+execute:
+  warning: false
+  message: false
+---
+
+## Overview
+
+This document demonstrates how to use `sample_trajectories()` to generate
+realistic SARS-CoV-2 viral shedding trajectories from the fitted Bayesian
+joint model. Each trajectory provides daily values for:
+
+| Output        | Description                                          |
+|---------------|------------------------------------------------------|
+| **RNA**       | Log viral RNA copies/mL (what PCR would measure)     |
+| **PFU**       | Log PFU/mL (infectious virus, what culture measures)  |
+| **LFD**       | Lateral flow device (rapid antigen test) result: 0/1 |
+| **Symptomatic** | Whether the agent is symptomatic: 0/1             |
+
+Trajectories span the **detectable period** (RNA or PFU above the limit of
+detection) and reflect true inter-individual variability by sampling new
+random effects from the fitted population distribution for each agent.
+
+## Setup
+
+```{r setup}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(cmdstanr)
+library(targets)
+
+# Load helper functions
+source("R/utils.R")
+source("R/data.R")
+source("R/trajectories.R")
+
+# Load fitted model and data
+# Option A: if targets store works directly
+# fit <- tar_read(kinetics_mcmc)
+
+# Option B: reconstruct from CSV files (needed if paths have changed)
+csv_files <- sort(list.files("output/stan_csv",
+                             pattern = "4827d7[.]csv$",
+                             full.names = TRUE))
+fit <- as_cmdstan_fit(csv_files)
+
+stan_data <- tar_read(stan_data)
+```
+
+## Example 1: Single agent, multiple draws
+
+Generate 200 trajectories for a 35-year-old, unvaccinated person with a
+first Omicron infection. Each trajectory represents one possible infection
+episode — the spread across draws captures both posterior parameter
+uncertainty and true biological inter-individual variability.
+
+```{r single-agent}
+agent <- data.frame(
+  age_group       = "30-49",
+  variant         = "omicron",
+  vaccination     = "unvaccinated",
+  prior_infection = FALSE
+)
+
+traj <- sample_trajectories(
+  fit, stan_data, agent,
+  n_draws = 200,
+  seed    = 42
+)
+
+glimpse(traj)
+```
+
+### Viral load trajectories
+
+```{r plot-single-vl}
+#| fig-height: 5
+
+traj_long <- traj |>
+  select(draw, day_since_detectable, log_rna, log_pfu) |>
+  pivot_longer(c(log_rna, log_pfu),
+               names_to = "marker", values_to = "value") |>
+  mutate(marker = recode(marker,
+    log_rna = "RNA (log copies/mL)",
+    log_pfu = "PFU (log PFU/mL)"
+  ))
+
+ggplot(traj_long, aes(day_since_detectable, value, group = draw)) +
+  geom_line(alpha = 0.08, colour = "steelblue") +
+  facet_wrap(~marker, scales = "free_y") +
+  labs(
+    x = "Days since first detectable",
+    y = "Viral load (log scale)",
+    title = "200 sampled trajectories — single Omicron agent"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### LFD positivity and symptom onset timing
+
+```{r plot-single-outcomes}
+#| fig-height: 4
+
+outcome_summary <- traj |>
+  group_by(draw) |>
+  summarise(
+    detectable_days   = n(),
+    lfd_positive_days = sum(lfd),
+    symptom_onset_day = if (any(symptomatic == 1))
+      min(day_since_detectable[symptomatic == 1]) else NA_real_,
+    ever_symptomatic  = any(symptomatic == 1),
+    .groups = "drop"
+  )
+
+outcome_summary |>
+  select(detectable_days, lfd_positive_days, symptom_onset_day) |>
+  pivot_longer(everything(), names_to = "outcome", values_to = "value") |>
+  mutate(outcome = recode(outcome,
+    detectable_days   = "Detectable duration (days)",
+    lfd_positive_days = "LFD-positive days",
+    symptom_onset_day = "Symptom onset (day)"
+  )) |>
+  ggplot(aes(value)) +
+  geom_histogram(bins = 20, fill = "steelblue", alpha = 0.7) +
+  facet_wrap(~outcome, scales = "free") +
+  labs(x = NULL, y = "Count",
+       title = "Distribution of clinical outcomes across 200 trajectories") +
+  theme_minimal(base_size = 13)
+```
+
+```{r}
+cat(sprintf("Ever symptomatic: %d / %d (%.0f%%)\n",
+            sum(outcome_summary$ever_symptomatic),
+            nrow(outcome_summary),
+            100 * mean(outcome_summary$ever_symptomatic)))
+```
+
+
+## Example 2: Comparing agent profiles
+
+How do host characteristics shape viral kinetics? Let's compare three
+distinct profiles:
+
+```{r multi-agent}
+agents <- data.frame(
+  label           = c("Young, Omicron, unvaxxed",
+                       "Middle-aged, Delta, boosted",
+                       "Older, Omicron, boosted + reinfection"),
+  age_group       = c("0-29",  "30-49", "50+"),
+  variant         = c("omicron", "delta", "omicron"),
+  vaccination     = c("unvaccinated", "boosted", "boosted"),
+  prior_infection = c(FALSE, FALSE, TRUE)
+)
+
+traj2 <- sample_trajectories(
+  fit, stan_data, agents,
+  n_draws = 200,
+  seed    = 123
+)
+```
+
+### Trajectory envelopes by profile
+
+```{r plot-multi-envelope}
+#| fig-height: 8
+
+summary_traj <- traj2 |>
+  group_by(label, day_since_detectable) |>
+  summarise(
+    rna_med = median(log_rna),
+    rna_lo  = quantile(log_rna, 0.1),
+    rna_hi  = quantile(log_rna, 0.9),
+    pfu_med = median(log_pfu),
+    pfu_lo  = quantile(log_pfu, 0.1),
+    pfu_hi  = quantile(log_pfu, 0.9),
+    n_draws = n(),
+    .groups = "drop"
+  ) |>
+  # Only show days with at least 20% of draws contributing
+  filter(n_draws >= 0.2 * 200)
+
+ggplot(summary_traj, aes(day_since_detectable)) +
+  geom_ribbon(aes(ymin = rna_lo, ymax = rna_hi),
+              alpha = 0.2, fill = "firebrick") +
+  geom_line(aes(y = rna_med), colour = "firebrick", linewidth = 0.8) +
+  geom_ribbon(aes(ymin = pfu_lo, ymax = pfu_hi),
+              alpha = 0.2, fill = "steelblue") +
+  geom_line(aes(y = pfu_med), colour = "steelblue", linewidth = 0.8) +
+  facet_wrap(~label, ncol = 1) +
+  labs(
+    x = "Days since first detectable",
+    y = "Viral load (log scale)",
+    title = "Median and 80% interval: RNA (red) vs PFU (blue)"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+### Duration comparison
+
+```{r plot-multi-duration}
+#| fig-height: 4
+
+traj2 |>
+  group_by(label, draw) |>
+  summarise(detectable_days = n(), .groups = "drop") |>
+  ggplot(aes(x = detectable_days, fill = label)) +
+  geom_histogram(bins = 20, alpha = 0.6, position = "identity") +
+  labs(
+    x = "Detectable duration (days)",
+    y = "Count",
+    fill = "Agent profile",
+    title = "Detection window by agent characteristics"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+
+## Example 3: Latent trajectories (no measurement noise)
+
+For transmission modelling, you may want the true underlying viral load
+without measurement noise. Set `include_noise = FALSE` to get latent
+trajectories and exact probabilities.
+
+```{r latent}
+traj_latent <- sample_trajectories(
+  fit, stan_data, agents[1, , drop = FALSE],
+  n_draws       = 30,
+  include_noise = FALSE,
+  seed          = 99
+)
+```
+
+When `include_noise = FALSE`:
+
+- `rna` and `pfu` equal the latent values (`log_rna`, `log_pfu`) — no
+  Gaussian noise or LOD censoring
+- `lfd` is the **probability** of a positive LFD (continuous, 0–1)
+- `symptomatic` is the **daily hazard** of symptom onset (continuous, 0–1)
+
+```{r plot-latent}
+#| fig-height: 5
+
+p1 <- ggplot(traj_latent, aes(day_since_detectable, lfd, group = draw)) +
+  geom_line(alpha = 0.4, colour = "darkorange") +
+  labs(x = "Days since detectable", y = "P(LFD positive)",
+       title = "LFD positivity probability") +
+  theme_minimal(base_size = 12)
+
+p2 <- ggplot(traj_latent, aes(day_since_detectable, symptomatic, group = draw)) +
+  geom_line(alpha = 0.4, colour = "purple") +
+  labs(x = "Days since detectable", y = "Daily symptom hazard",
+       title = "Symptom onset hazard") +
+  theme_minimal(base_size = 12)
+
+library(patchwork)
+p1 + p2
+```
+
+
+## Example 4: Generating a population for ABM
+
+To initialise 1,000 agents for an ABM, sample characteristics from a
+distribution and call `sample_trajectories()` with `n_draws = 1` to get
+one realised trajectory per agent.
+
+```{r abm-population}
+set.seed(2026)
+n_pop <- 100  # use 1000+ for real ABM; 100 here for speed
+
+pop <- data.frame(
+  age_group = sample(c("0-29", "30-49", "50+"), n_pop,
+                     replace = TRUE, prob = c(0.3, 0.4, 0.3)),
+  variant   = "omicron",
+  vaccination = sample(c("unvaccinated", "unboosted", "boosted"), n_pop,
+                       replace = TRUE, prob = c(0.2, 0.3, 0.5)),
+  prior_infection = sample(c(TRUE, FALSE), n_pop,
+                           replace = TRUE, prob = c(0.4, 0.6))
+)
+
+# One draw per agent → one realised trajectory each
+pop_traj <- sample_trajectories(
+  fit, stan_data, pop,
+  n_draws = 1,
+  seed    = 2026
+)
+
+cat(sprintf("Population: %d agents, %d total days of data\n",
+            n_distinct(pop_traj$agent_id), nrow(pop_traj)))
+```
+
+### Population summary
+
+```{r plot-pop-summary}
+#| fig-height: 5
+
+pop_summary <- pop_traj |>
+  group_by(agent_id) |>
+  summarise(
+    peak_rna          = max(log_rna),
+    peak_pfu          = max(log_pfu),
+    detectable_days   = n(),
+    ever_symptomatic  = any(symptomatic == 1),
+    lfd_positive_days = sum(lfd),
+    .groups = "drop"
+  )
+
+pop_summary |>
+  select(peak_rna, peak_pfu, detectable_days, lfd_positive_days) |>
+  pivot_longer(everything(), names_to = "measure", values_to = "value") |>
+  mutate(measure = recode(measure,
+    peak_rna = "Peak RNA (log)",
+    peak_pfu = "Peak PFU (log)",
+    detectable_days = "Detectable days",
+    lfd_positive_days = "LFD-positive days"
+  )) |>
+  ggplot(aes(value)) +
+  geom_histogram(bins = 25, fill = "steelblue", alpha = 0.7) +
+  facet_wrap(~measure, scales = "free") +
+  labs(x = NULL, y = "Agents",
+       title = sprintf("Population-level summary (%d agents)", n_pop)) +
+  theme_minimal(base_size = 13)
+```
+
+
+## Function reference
+
+```r
+sample_trajectories(
+  fit,               # CmdStanMCMC fit object
+  stan_data,         # Stan data list (from build_stan_data)
+  agents,            # data.frame of agent characteristics
+  n_draws    = 100,  # posterior draws per agent
+  dt         = 1,    # time step (days)
+  t_range    = c(-20, 35),  # evaluation window (days from peak)
+  lod_rna    = NULL, # RNA LOD (default: Ct 40, NBA calibration)
+  lod_pfu    = NULL, # PFU LOD (default: 2.3 ≈ 10 PFU/mL)
+  include_noise = TRUE,  # add measurement noise?
+  seed       = NULL  # for reproducibility
+)
+```
+
+### Agent characteristics
+
+| Column            | Values                                                  | Default (ref)  |
+|-------------------|---------------------------------------------------------|----------------|
+| `age_group`       | `"0-29"`, `"30-49"`, `"50+"`                            | `"0-29"`       |
+| `variant`         | `"prealpha"`, `"alpha"`, `"delta"`, `"omicron"`, `"ba4ba5"`, `"other"` | `"prealpha"` |
+| `vaccination`     | `"unvaccinated"`, `"boosted"`, `"unboosted"`, `"vaccinated_unreported"`, `"unvaccinated_unreported"`, `"unreported_primary"` | `"unvaccinated"` |
+| `prior_infection` | `TRUE` / `FALSE`                                        | `FALSE`        |
+
+Missing columns default to the reference category. Extra columns (e.g. `label`)
+are carried through to the output for easy grouping.
+
+### Output columns
+
+| Column                 | Type    | Description                        |
+|------------------------|---------|------------------------------------|
+| `agent_id`             | int     | Row index of `agents`              |
+| `draw`                 | int     | Posterior draw index               |
+| `day`                  | numeric | Days relative to RNA peak          |
+| `day_since_detectable` | numeric | Days since first detection (≥ 0)   |
+| `log_rna`              | numeric | True log RNA (ln copies/mL)        |
+| `log_pfu`              | numeric | True log PFU/mL                    |
+| `rna`                  | numeric | Measured log RNA                   |
+| `pfu`                  | numeric | Measured log PFU                   |
+| `lfd`                  | int/num | LFD result (0/1 or probability)    |
+| `symptomatic`          | int/num | Symptomatic (0/1 or daily hazard)  |
