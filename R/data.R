@@ -666,13 +666,61 @@ build_stan_data <- function(stacked_dat, flags = list()) {
     prior_beta_sd  = 1,
     prior_i_sd     = 1,
     prior_k_sd     = 1,
-    prior_resid_pfu_sd = 0.3,  # mode 2: residual PFU RE prior scale
     prior_lfd_mean = 0.01
   )
 
   # grainsize for reduce_sum — 1 lets Stan auto-schedule slice sizes.
   # Increase to 50-200 for potentially better cache locality.
   stan_data$grainsize <- 1L
+
+  # PFU individual-effect mapping: restrict PFU REs to informed individuals
+  stan_data <- add_pfu_ind_mapping(stan_data)
+
+  stan_data
+}
+
+
+#' Compute PFU individual-effect mapping
+#'
+#' Identifies which individuals have PFU-informing data (viral culture,
+#' LFD, or symptom observations) and creates the mapping arrays needed
+#' by the Stan model to restrict PFU individual random effects to only
+#' those individuals.  Individuals without PFU-informing data (e.g. NBA
+#' with RNA-only) get the population-level RNA->PFU transform with no
+#' individual deviation.  The hierarchical SD (sigma_ind_pfu) is still
+#' learned from the informed individuals.
+#'
+#' @param stan_data  Stan data list (from build_stan_data or subsample_stan_data)
+#' @return stan_data with N_pfu_ind and pfu_ind_idx added
+add_pfu_ind_mapping <- function(stan_data) {
+  N_ind <- sum(stan_data$M)
+
+  # An individual is PFU-informed if ANY of their observations have
+  # culture data (pfu_exist), lateral flow (lfd_exist), or symptom data
+  # (sym_exist) — all three sub-models depend on pfu_hat.
+  has_pfu_info <- as.logical(tapply(
+    stan_data$pfu_exist | stan_data$lfd_exist | stan_data$sym_exist,
+    stan_data$id,
+    any
+  ))
+
+  # Build mapping: 0 = no PFU RE, 1..N_pfu_ind = index into PFU RE arrays
+  pfu_ind_idx <- integer(N_ind)
+  counter <- 0L
+  for (i in seq_len(N_ind)) {
+    if (has_pfu_info[i]) {
+      counter <- counter + 1L
+      pfu_ind_idx[i] <- counter
+    }
+  }
+
+  stan_data$N_pfu_ind   <- counter
+  stan_data$pfu_ind_idx <- pfu_ind_idx
+
+  message(sprintf(
+    "PFU individual effects: %d of %d individuals have PFU-informing data",
+    counter, N_ind
+  ))
 
   stan_data
 }
@@ -758,6 +806,9 @@ subsample_stan_data <- function(data, frac = 0.1, max_per_source = Inf,
   out$pfu_exist <- data$pfu_exist[keep_obs]
   out$lfd_exist <- data$lfd_exist[keep_obs]
   out$sym_exist <- data$sym_exist[keep_obs]
+
+  # Recompute PFU individual-effect mapping for subsampled data
+  out <- add_pfu_ind_mapping(out)
 
   out
 }

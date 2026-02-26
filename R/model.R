@@ -60,16 +60,17 @@ unflatten_stan_draw <- function(vals, nms) {
 #' @return List of lists, one per chain
 build_init <- function(stan_data, chains = 4) {
   N_ind <- sum(stan_data$M)
+  N_pfu <- stan_data$N_pfu_ind  # PFU REs only for informed individuals
   P     <- stan_data$P
   K     <- stan_data$K
   lapply(seq_len(chains), function(x) {
     init <- list(
-      # PFU individual effects (mode 2 — residual)
-      tp_i_pfu  = rep(0, N_ind),
-      dp_i_pfu  = rep(0, N_ind),
-      wp_i_pfu  = rep(0, N_ind),
-      wr_i_pfu  = rep(0, N_ind),
-      sigma_resid_pfu = rep(0.15, if (stan_data$ind_effects) 4 else 1),
+      # PFU individual effects (restricted to PFU-informed individuals)
+      tp_i_pfu  = rep(0, N_pfu),
+      dp_i_pfu  = rep(0, N_pfu),
+      wp_i_pfu  = rep(0, N_pfu),
+      wr_i_pfu  = rep(0, N_pfu),
+      sigma_ind_pfu = rep(0.15, if (stan_data$ind_effects) 4 else 1),
       z_sym     = rep(0, N_ind),
 
       # population kinetics (NCP raw values → at 0 = prior mode)

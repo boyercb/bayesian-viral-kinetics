@@ -189,29 +189,22 @@ sample_trajectories <- function(
   if (has_wf)      vars <- c(vars, "wf_raw")
 
   # ── PFU individual-effect SDs ───────────────────────────────────────────────
-
-  # Newer Stan model (mode 2):  sigma_resid_pfu is an estimated parameter that
-  # captures residual PFU individual variation beyond what is propagated from
-  # RNA via the log-affine transform.  If present, we use it directly.
-  # Older fits:  PFU REs had a fixed prior_i_sd, so sigma_resid_pfu is missing.
-  #   Fall back to extracting all individual PFU REs and computing empirical
-  #   per-draw SDs (slower, but correct).
+  #
+  # sigma_ind_pfu is an estimated parameter capturing PFU individual variation.
+  # With the PFU RE restriction (N_pfu_ind << sum(M)), sigma_ind_pfu is well-
+  # identified from culture/LFD/symptom-informed individuals.  For trajectory
+  # sampling, we draw fresh PFU REs from N(0, sigma_ind_pfu) for ALL agents
+  # (including RNA-only individuals like NBA).
+  #
+  # Fallback for very old fits that lack sigma_ind_pfu: estimate population SDs
+  # via variance decomposition over individual PFU RE posteriors.
   all_param_names <- fit$metadata()$model_params
-  has_sigma_resid_pfu <- "sigma_resid_pfu" %in% all_param_names
+  has_sigma_ind_pfu <- "sigma_ind_pfu" %in% all_param_names
 
-  # Pre-compute PFU-informed individual IDs for the fallback path
-  pfu_informed <- NULL
-  if (!has_sigma_resid_pfu) {
-    pfu_informed <- which(tapply(
-      stan_data$pfu_exist, stan_data$id, function(x) any(x == 1)
-    ))
-  }
-
-  if (has_sigma_resid_pfu) {
-    vars <- c(vars, "sigma_resid_pfu")
+  if (has_sigma_ind_pfu) {
+    vars <- c(vars, "sigma_ind_pfu")
   } else {
-    message("sigma_resid_pfu not found in posterior \u2014 using variance decomposition workaround")
-    # PFU REs are extracted separately below (not added to vars)
+    message("sigma_ind_pfu not found in posterior \u2014 using variance decomposition workaround")
   }
 
   # ── Extract and thin draws ────────────────────────────────────────────────
@@ -228,28 +221,18 @@ sample_trajectories <- function(
   P  <- stan_data$P
 
   # ── Resolve PFU RE SDs per draw ───────────────────────────────────────────
-  if (has_sigma_resid_pfu) {
-    # Direct: sigma_resid_pfu[1..4] (or [1] when no ind_effects)
+  if (has_sigma_ind_pfu) {
+    # Direct: sigma_ind_pfu[1..4] (or [1] when no ind_effects)
     sd_pfu <- list(
-      tp = drws[, "sigma_resid_pfu[1]"],
-      dp = if (has_ind) drws[, "sigma_resid_pfu[2]"] else rep(0, nd),
-      wp = if (has_ind) drws[, "sigma_resid_pfu[3]"] else rep(0, nd),
-      wr = if (has_ind) drws[, "sigma_resid_pfu[4]"] else rep(0, nd)
+      tp = drws[, "sigma_ind_pfu[1]"],
+      dp = if (has_ind) drws[, "sigma_ind_pfu[2]"] else rep(0, nd),
+      wp = if (has_ind) drws[, "sigma_ind_pfu[3]"] else rep(0, nd),
+      wr = if (has_ind) drws[, "sigma_ind_pfu[4]"] else rep(0, nd)
     )
   } else {
     # Fallback: estimate population SDs of PFU individual effects via
-    # variance decomposition (needed until sigma_resid_pfu is fitted).
-    #
-    # Problem: with prior_i_sd=1 and sparse PFU data (~5-10 obs per person),
-    # each individual's posterior RE is wide.  The per-draw empirical SD
-    # across individuals conflates TRUE population variation with posterior
-    # uncertainty:
-    #     Var_between(draw d) = Var_pop + mean(Var_posterior_i)
-    #
-    # We correct this by subtracting the average within-individual posterior
-    # variance (computed across MCMC draws) from the per-draw between-
-    # individual variance:
-    #     Var_pop ≈ max(0, Var_between - mean(Var_posterior_i))
+    # variance decomposition (needed for fits from before sigma_ind_pfu
+    # was an estimated parameter).
     N_ind <- sum(stan_data$M)
     message(sprintf("  Using %d PFU-informed individuals (of %d total) for variance decomposition",
                     length(pfu_informed), N_ind))

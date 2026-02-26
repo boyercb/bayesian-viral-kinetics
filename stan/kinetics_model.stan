@@ -127,10 +127,11 @@ functions {
     array[] int    source_obs,
     // ── individual-level (indexed by id) ────────────────────────────────────
     matrix         eff_rna,         // [4 x N_ind]: rows = tp, dp, wp, wr
-    array[] real   tp_i_pfu_arg,    // always N_ind
-    array[] real   dp_i_pfu_arg,    // N_ind or 0 (ind_effects)
+    array[] real   tp_i_pfu_arg,    // N_pfu_ind (PFU-informed individuals only)
+    array[] real   dp_i_pfu_arg,    // N_pfu_ind or 0 (ind_effects)
     array[] real   wp_i_pfu_arg,
     array[] real   wr_i_pfu_arg,
+    array[] int    pfu_ind_idx_arg, // [N_ind]: 0=no PFU RE, >0=index into PFU RE arrays
     array[] real   z_sym_arg,
     array[] real   wf_i_arg,        // N_ind or 0 (use_wf && ind_effects)
     array[] row_vector x_arg,
@@ -216,19 +217,19 @@ functions {
       }
 
       // ── PFU trajectory ───────────────────────────────────────────────────
-      // Population PFU params derived from RNA via log-affine transform.
-      // Individual RNA variation propagates automatically through dp_rna etc.
-      // Residual PFU REs (dp_i_pfu etc.) capture variation NOT explained by
-      // the RNA→PFU propagation, with sigma_resid_pfu controlling their scale.
-      real tp_pfu = tau_tp_arg[1] + tau_tp_arg[2] * tp_rna + tp_i_pfu_arg[i];
+      // PFU REs only exist for PFU-informed individuals (pidx > 0).
+      // Non-informed individuals get population-level RNA→PFU transform only.
+      int pidx = pfu_ind_idx_arg[i];  // 0 = no PFU RE
+      real tp_pfu = tau_tp_arg[1] + tau_tp_arg[2] * tp_rna;
+      if (pidx > 0) tp_pfu += tp_i_pfu_arg[pidx];
       real dp_pfu = log_affine(tau_dp_arg[1], tau_dp_arg[2], dp_rna);
       real wp_pfu = log_affine(tau_wp_arg[1], tau_wp_arg[2], wp_rna);
       real wr_pfu = log_affine(tau_wr_arg[1], tau_wr_arg[2], wr_rna);
 
-      if (ind_effects) {
-        dp_pfu = dp_pfu * exp(dp_i_pfu_arg[i]);
-        wp_pfu = wp_pfu * exp(wp_i_pfu_arg[i]);
-        wr_pfu = wr_pfu * exp(wr_i_pfu_arg[i]);
+      if (ind_effects && pidx > 0) {
+        dp_pfu = dp_pfu * exp(dp_i_pfu_arg[pidx]);
+        wp_pfu = wp_pfu * exp(wp_i_pfu_arg[pidx]);
+        wr_pfu = wr_pfu * exp(wr_i_pfu_arg[pidx]);
       }
       if (source_pfu) {
         tp_pfu = tp_pfu + tp_k_pfu_arg[k];
@@ -380,6 +381,12 @@ data {
   // Set threads_per_chain > 1 in $sample() to activate parallelism.
   int<lower=1> grainsize;
 
+  // PFU individual effects: restrict to individuals with PFU-informing data
+  // (culture, LFD, or symptom observations).  Non-informed individuals
+  // (e.g. NBA with RNA-only) get population-level RNA→PFU transform only.
+  int<lower=0> N_pfu_ind;                        // number of PFU-informed individuals
+  array[sum(M)] int<lower=0> pfu_ind_idx;        // mapping: 0=no RE, 1..N_pfu_ind=index
+
   // missingness indicators
   array[sum(N)] int<lower=0, upper=1> rna_exist; 
   array[sum(N)] int<lower=0, upper=1> pfu_exist; 
@@ -426,7 +433,6 @@ data {
   real<lower=0> prior_wf_mean;  // prior mean for flat-top duration (days)
   real<lower=0> prior_wf_cv;    // prior CV for flat-top duration (NCP scale)
 
-  real<lower=0> prior_resid_pfu_sd;  // prior scale for residual PFU RE SDs (mode 2)
 }
 
 transformed data {
@@ -493,15 +499,12 @@ parameters {
   vector[2] tau_wp; // proliferation time 
   vector[2] tau_wr; // clearance time 
 
-  // individual effects: PFU (mode 2 — residual)
-  // These capture PFU individual variation NOT explained by the log-affine
-  // propagation of RNA individual effects.  Most PFU variation comes from
-  // a_1 * u_i^RNA; sigma_resid_pfu captures the remainder.
-  vector<lower=0>[ind_effects ? 4 : 1] sigma_resid_pfu;  // residual PFU RE SDs
-  array[sum(M)] real tp_i_pfu; // onset
-  array[sum(M) && ind_effects ? sum(M) : 0] real dp_i_pfu; // peak
-  array[sum(M) && ind_effects ? sum(M) : 0] real wp_i_pfu; // proliferation time
-  array[sum(M) && ind_effects ? sum(M) : 0] real wr_i_pfu; // clearance time
+  // individual effects: PFU (restricted to PFU-informed individuals)
+  vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE SDs (learned from informed individuals)
+  array[N_pfu_ind] real tp_i_pfu; // onset (PFU-informed only)
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real dp_i_pfu; // peak
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wp_i_pfu; // proliferation time
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wr_i_pfu; // clearance time
   
   // source effects: PFU
   array[K && source_pfu ? K : 0] real tp_k_pfu; // onset
@@ -594,6 +597,7 @@ transformed parameters {
     // individual-level
     eff_rna_mat,
     tp_i_pfu, dp_i_pfu, wp_i_pfu, wr_i_pfu,
+    pfu_ind_idx,
     z_sym, wf_i, x,
     // source-level
     lod_rna, lod_pfu, fp_mean,
@@ -643,8 +647,8 @@ model {
   // Validation: ind_corr requires ind_effects
   if (ind_corr && !ind_effects) reject("ind_corr requires ind_effects = 1");
 
-  sigma_resid_pfu ~ normal(0, prior_resid_pfu_sd) T[0, ];  // half-normal prior; tighter than RNA (residual)
-  tp_i_pfu ~ normal(0, sigma_resid_pfu[1]);
+  sigma_ind_pfu ~ normal(0, prior_i_sd) T[0, ];  // half-normal prior on PFU RE SDs
+  tp_i_pfu ~ normal(0, sigma_ind_pfu[1]);
   z_sym ~ std_normal();  // NCP for symptom random effects
 
   // RNA individual effects: correlated (Cholesky NCP) or independent
@@ -662,9 +666,9 @@ model {
   }
 
   if (ind_effects) {
-    dp_i_pfu ~ normal(0, sigma_resid_pfu[2]);
-    wp_i_pfu ~ normal(0, sigma_resid_pfu[3]);
-    wr_i_pfu ~ normal(0, sigma_resid_pfu[4]);
+    dp_i_pfu ~ normal(0, sigma_ind_pfu[2]);
+    wp_i_pfu ~ normal(0, sigma_ind_pfu[3]);
+    wr_i_pfu ~ normal(0, sigma_ind_pfu[4]);
   }
 
   if (source_pfu) {

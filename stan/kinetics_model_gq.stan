@@ -128,6 +128,10 @@ data {
   int<lower=0, upper=1> use_wf;
   int<lower=0, upper=1> use_smooth;
 
+  // PFU individual effects: restrict to PFU-informed individuals
+  int<lower=0> N_pfu_ind;
+  array[sum(M)] int<lower=0> pfu_ind_idx;
+
   real<lower=0> prior_dp_mean;
   real<lower=0> prior_dp_cv;
   real<lower=0> prior_wp_mean;
@@ -149,7 +153,6 @@ data {
   real<lower=0> prior_wf_mean;
   real<lower=0> prior_wf_cv;
 
-  real<lower=0> prior_resid_pfu_sd;  // prior scale for residual PFU RE SDs (mode 2)
 }
 
 transformed data {
@@ -201,11 +204,11 @@ parameters {
   vector[2] tau_wp;
   vector[2] tau_wr;
 
-  vector<lower=0>[ind_effects ? 4 : 1] sigma_resid_pfu;  // residual PFU RE SDs
-  array[sum(M)] real tp_i_pfu;
-  array[sum(M) && ind_effects ? sum(M) : 0] real dp_i_pfu;
-  array[sum(M) && ind_effects ? sum(M) : 0] real wp_i_pfu;
-  array[sum(M) && ind_effects ? sum(M) : 0] real wr_i_pfu;
+  vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE SDs (learned from informed individuals)
+  array[N_pfu_ind] real tp_i_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real dp_i_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wp_i_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wr_i_pfu;
 
   array[K && source_pfu ? K : 0] real tp_k_pfu;
   array[K && source_pfu ? K : 0] real dp_k_pfu;
@@ -345,15 +348,20 @@ generated quantities {
       }
 
       // ---- PFU trajectory ----
-      tp_pfu = tau_tp[1] + tau_tp[2] * tp_rna + tp_i_pfu[id[n]];
+      {
+        int pidx = pfu_ind_idx[id[n]];
+        tp_pfu = tau_tp[1] + tau_tp[2] * tp_rna;
+        if (pidx > 0) tp_pfu += tp_i_pfu[pidx];
+      }
       dp_pfu = log_affine(tau_dp[1], tau_dp[2], dp_rna);
       wp_pfu = log_affine(tau_wp[1], tau_wp[2], wp_rna);
       wr_pfu = log_affine(tau_wr[1], tau_wr[2], wr_rna);
 
-      if (ind_effects) {
-        dp_pfu = dp_pfu * exp(dp_i_pfu[id[n]]);
-        wp_pfu = wp_pfu * exp(wp_i_pfu[id[n]]);
-        wr_pfu = wr_pfu * exp(wr_i_pfu[id[n]]);
+      if (ind_effects && pfu_ind_idx[id[n]] > 0) {
+        int pidx = pfu_ind_idx[id[n]];
+        dp_pfu = dp_pfu * exp(dp_i_pfu[pidx]);
+        wp_pfu = wp_pfu * exp(wp_i_pfu[pidx]);
+        wr_pfu = wr_pfu * exp(wr_i_pfu[pidx]);
       }
       if (source_pfu) {
         tp_pfu = tp_pfu + tp_k_pfu[source[n]];
