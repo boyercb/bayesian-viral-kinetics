@@ -665,6 +665,7 @@ build_stan_data <- function(stacked_dat, flags = list()) {
     prior_sigma_sd = 5,
     prior_beta_sd  = 1,
     prior_i_sd     = 1,
+    prior_pfu_i_sd = 0.3,  # tighter prior for PFU RE SDs
     prior_k_sd     = 1,
     prior_lfd_mean = 0.01
   )

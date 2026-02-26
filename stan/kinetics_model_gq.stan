@@ -140,6 +140,7 @@ data {
   real<lower=0> prior_wr_cv;
 
   real<lower=0> prior_i_sd;
+  real<lower=0> prior_pfu_i_sd;  // tighter prior SD for PFU RE hyperparameters
   real<lower=0> prior_k_sd;
   real<lower=0> prior_beta_sd;
 

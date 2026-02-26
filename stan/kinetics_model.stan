@@ -420,6 +420,7 @@ data {
   real<lower=0> prior_wr_cv;
   
   real<lower=0> prior_i_sd;
+  real<lower=0> prior_pfu_i_sd;  // tighter prior SD for PFU RE hyperparameters
   real<lower=0> prior_k_sd;
   real<lower=0> prior_beta_sd;
 
@@ -647,7 +648,7 @@ model {
   // Validation: ind_corr requires ind_effects
   if (ind_corr && !ind_effects) reject("ind_corr requires ind_effects = 1");
 
-  sigma_ind_pfu ~ normal(0, prior_i_sd) T[0, ];  // half-normal prior on PFU RE SDs
+  sigma_ind_pfu ~ normal(0, prior_pfu_i_sd) T[0, ];  // half-normal prior on PFU RE SDs (tight)
   tp_i_pfu ~ normal(0, sigma_ind_pfu[1]);
   z_sym ~ std_normal();  // NCP for symptom random effects
 
