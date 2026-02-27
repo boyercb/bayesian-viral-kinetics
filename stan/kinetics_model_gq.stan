@@ -206,10 +206,10 @@ parameters {
   vector[2] tau_wr;
 
   vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE SDs (learned from informed individuals)
-  array[N_pfu_ind] real tp_i_pfu;
-  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real dp_i_pfu;
-  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wp_i_pfu;
-  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wr_i_pfu;
+  array[N_pfu_ind] real z_tp_pfu;  // NCP z-scores
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real z_dp_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real z_wp_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real z_wr_pfu;
 
   array[K && source_pfu ? K : 0] real tp_k_pfu;
   array[K && source_pfu ? K : 0] real dp_k_pfu;
@@ -299,6 +299,20 @@ generated quantities {
           eff_wp_i_rna[i] = wp_i_rna[i];
           eff_wr_i_rna[i] = wr_i_rna[i];
         }
+      }
+    }
+
+    // NCP reconstruction for PFU individual effects
+    array[N_pfu_ind] real tp_i_pfu;
+    array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real dp_i_pfu;
+    array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wp_i_pfu;
+    array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wr_i_pfu;
+    for (j in 1:N_pfu_ind) tp_i_pfu[j] = sigma_ind_pfu[1] * z_tp_pfu[j];
+    if (ind_effects) {
+      for (j in 1:N_pfu_ind) {
+        dp_i_pfu[j] = sigma_ind_pfu[2] * z_dp_pfu[j];
+        wp_i_pfu[j] = sigma_ind_pfu[3] * z_wp_pfu[j];
+        wr_i_pfu[j] = sigma_ind_pfu[4] * z_wr_pfu[j];
       }
     }
 

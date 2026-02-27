@@ -501,11 +501,12 @@ parameters {
   vector[2] tau_wr; // clearance time 
 
   // individual effects: PFU (restricted to PFU-informed individuals)
+  // NCP: sample z-scores, reconstruct actual effects in transformed parameters
   vector<lower=0>[ind_effects ? 4 : 1] sigma_ind_pfu;  // PFU RE SDs (learned from informed individuals)
-  array[N_pfu_ind] real tp_i_pfu; // onset (PFU-informed only)
-  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real dp_i_pfu; // peak
-  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wp_i_pfu; // proliferation time
-  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wr_i_pfu; // clearance time
+  array[N_pfu_ind] real z_tp_pfu; // NCP z-score for onset
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real z_dp_pfu; // NCP z-score for peak
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real z_wp_pfu; // NCP z-score for proliferation
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real z_wr_pfu; // NCP z-score for clearance
   
   // source effects: PFU
   array[K && source_pfu ? K : 0] real tp_k_pfu; // onset
@@ -561,6 +562,21 @@ transformed parameters {
 
   // NCP intercept for LFD
   real tau0_lfd = logit(prior_lfd_mean) + 1 * tau0_lfd_raw;
+
+  // ── NCP reconstruction for PFU individual effects ─────────────────────────
+  // tp_i_pfu[i] = sigma_ind_pfu[1] * z_tp_pfu[i], etc.
+  array[N_pfu_ind] real tp_i_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real dp_i_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wp_i_pfu;
+  array[N_pfu_ind && ind_effects ? N_pfu_ind : 0] real wr_i_pfu;
+  for (j in 1:N_pfu_ind) tp_i_pfu[j] = sigma_ind_pfu[1] * z_tp_pfu[j];
+  if (ind_effects) {
+    for (j in 1:N_pfu_ind) {
+      dp_i_pfu[j] = sigma_ind_pfu[2] * z_dp_pfu[j];
+      wp_i_pfu[j] = sigma_ind_pfu[3] * z_wp_pfu[j];
+      wr_i_pfu[j] = sigma_ind_pfu[4] * z_wr_pfu[j];
+    }
+  }
 
   // -----------------------------------------------------------------------
   // Total log-likelihood accumulator.
@@ -649,7 +665,7 @@ model {
   if (ind_corr && !ind_effects) reject("ind_corr requires ind_effects = 1");
 
   sigma_ind_pfu ~ normal(0, prior_pfu_i_sd) T[0, ];  // half-normal prior on PFU RE SDs (tight)
-  tp_i_pfu ~ normal(0, sigma_ind_pfu[1]);
+  z_tp_pfu ~ std_normal();  // NCP z-scores for PFU individual effects
   z_sym ~ std_normal();  // NCP for symptom random effects
 
   // RNA individual effects: correlated (Cholesky NCP) or independent
@@ -667,9 +683,9 @@ model {
   }
 
   if (ind_effects) {
-    dp_i_pfu ~ normal(0, sigma_ind_pfu[2]);
-    wp_i_pfu ~ normal(0, sigma_ind_pfu[3]);
-    wr_i_pfu ~ normal(0, sigma_ind_pfu[4]);
+    z_dp_pfu ~ std_normal();
+    z_wp_pfu ~ std_normal();
+    z_wr_pfu ~ std_normal();
   }
 
   if (source_pfu) {

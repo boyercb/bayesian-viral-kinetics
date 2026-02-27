@@ -65,11 +65,11 @@ build_init <- function(stan_data, chains = 4) {
   K     <- stan_data$K
   lapply(seq_len(chains), function(x) {
     init <- list(
-      # PFU individual effects (restricted to PFU-informed individuals)
-      tp_i_pfu  = rep(0, N_pfu),
-      dp_i_pfu  = rep(0, N_pfu),
-      wp_i_pfu  = rep(0, N_pfu),
-      wr_i_pfu  = rep(0, N_pfu),
+      # PFU individual effects: NCP z-scores (restricted to PFU-informed individuals)
+      z_tp_pfu  = rep(0, N_pfu),
+      z_dp_pfu  = rep(0, N_pfu),
+      z_wp_pfu  = rep(0, N_pfu),
+      z_wr_pfu  = rep(0, N_pfu),
       sigma_ind_pfu = rep(0.15, if (stan_data$ind_effects) 4 else 1),
       z_sym     = rep(0, N_ind),
 
@@ -228,7 +228,7 @@ jitter_init <- function(init, sd_scalar = 0.1, sd_vec = 0.05,
   }
 
   # Individual random effects (large arrays)
-  for (nm in c("tp_i_pfu", "dp_i_pfu", "wp_i_pfu", "wr_i_pfu",
+  for (nm in c("z_tp_pfu", "z_dp_pfu", "z_wp_pfu", "z_wr_pfu",
                "tp_i_rna", "dp_i_rna", "wp_i_rna", "wr_i_rna",
                "z_sym", "wf_i", "z_ind_rna")) {
     if (!is.null(init[[nm]])) init[[nm]] <- jit(init[[nm]], sd_re)
@@ -295,7 +295,7 @@ map_init <- function(mod, stan_data, chains = 4, seed = 42) {
                  "dp_mean_rna", "wp_mean_rna", "wr_mean_rna",
                  "dp_mean_pfu", "wp_mean_pfu", "wr_mean_pfu",
                  "tau0_lfd", "total_ll")
-  skip_pat  <- "^(Omega_rna)"
+  skip_pat  <- "^(Omega_rna|tp_i_pfu|dp_i_pfu|wp_i_pfu|wr_i_pfu)"
   keep      <- all_cols[!all_cols %in% skip_cols & !grepl(skip_pat, all_cols)]
 
   map_list <- unflatten_stan_draw(as.numeric(draws_mat[1, keep]), keep)
@@ -375,7 +375,7 @@ fit_model <- function(stan_file, stan_data,
                        "dp_mean_pfu", "wp_mean_pfu", "wr_mean_pfu",
                        "tau0_lfd", "total_ll")
         all_cols <- colnames(draws_mat)
-        skip_pat <- "^(Omega_rna)"
+        skip_pat <- "^(Omega_rna|tp_i_pfu|dp_i_pfu|wp_i_pfu|wr_i_pfu)"
         keep <- all_cols[!all_cols %in% skip_cols & !grepl(skip_pat, all_cols)]
         lapply(best_idx, function(i) {
           unflatten_stan_draw(as.numeric(draws_mat[i, keep]), keep)

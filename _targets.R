@@ -105,7 +105,7 @@ list(
   tar_target(
     kinetics_mcmc,
     fit_model("stan/kinetics_model.stan", stan_data,
-              chains = 4, iter_warmup = 1000, iter_sampling = 2000,
+              chains = 4, iter_warmup = 1000, iter_sampling = 4000,
               adapt_delta = 0.95, max_treedepth = 12,
               init_method = "map",
               threads_per_chain = 1)  # increase if OpenMP available (brew install libomp)
