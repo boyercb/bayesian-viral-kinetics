@@ -638,13 +638,20 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
   wp_pfu <- exp(k$tau_wp[1]) * wp_rna^k$tau_wp[2]
   wr_pfu <- exp(k$tau_wr[1]) * wr_rna^k$tau_wr[2]
 
-  # Stan: tp_pfu = tau_tp[1] + tau_tp[2] * tp_rna + tp_i_pfu[id]
-  tp_pfu <- k$tau_tp[1] + k$tau_tp[2] * tp_rna + k$tp_i_pfu[id]
+  # Stan: tp_pfu = tau_tp[1] + tau_tp[2] * tp_rna + tp_i_pfu[pidx]
+  # PFU individual effects only exist for PFU-informed individuals.
+  # Use pfu_ind_idx to map original id → PFU RE index (0 = no RE).
+  pidx <- stan_data$pfu_ind_idx[id]  # vector, one per observation
+  tp_pfu <- k$tau_tp[1] + k$tau_tp[2] * tp_rna
+  has_pfu_re <- pidx > 0
+  if (any(has_pfu_re)) {
+    tp_pfu[has_pfu_re] <- tp_pfu[has_pfu_re] + k$tp_i_pfu[pidx[has_pfu_re]]
+  }
 
-  if (stan_data$ind_effects) {
-    dp_pfu <- dp_pfu * exp(k$dp_i_pfu[id])
-    wp_pfu <- wp_pfu * exp(k$wp_i_pfu[id])
-    wr_pfu <- wr_pfu * exp(k$wr_i_pfu[id])
+  if (stan_data$ind_effects && any(has_pfu_re)) {
+    dp_pfu[has_pfu_re] <- dp_pfu[has_pfu_re] * exp(k$dp_i_pfu[pidx[has_pfu_re]])
+    wp_pfu[has_pfu_re] <- wp_pfu[has_pfu_re] * exp(k$wp_i_pfu[pidx[has_pfu_re]])
+    wr_pfu[has_pfu_re] <- wr_pfu[has_pfu_re] * exp(k$wr_i_pfu[pidx[has_pfu_re]])
   }
 
   if (stan_data$source_pfu) {

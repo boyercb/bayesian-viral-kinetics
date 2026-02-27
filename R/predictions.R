@@ -309,13 +309,18 @@ compute_grid_summaries <- function(fit, pred_dat, stan_data, dt = 0.25,
     dp_pfu <- exp(tau_dp1) * dp_rna^tau_dp2
     wp_pfu <- exp(tau_wp1) * wp_rna^tau_wp2
     wr_pfu <- exp(tau_wr1) * wr_rna^tau_wr2
-    tp_pfu <- tau_tp1 + tau_tp2 * tp_rna +
-      get_vec(paste0("tp_i_pfu[", ind, "]"))
+    tp_pfu <- tau_tp1 + tau_tp2 * tp_rna
 
-    if (stan_data$ind_effects) {
-      dp_pfu <- dp_pfu * exp(get_vec(paste0("dp_i_pfu[", ind, "]")))
-      wp_pfu <- wp_pfu * exp(get_vec(paste0("wp_i_pfu[", ind, "]")))
-      wr_pfu <- wr_pfu * exp(get_vec(paste0("wr_i_pfu[", ind, "]")))
+    # PFU individual effects: only for PFU-informed individuals
+    pidx <- stan_data$pfu_ind_idx[ind]  # 0 = no RE, >0 = index
+    if (pidx > 0) {
+      tp_pfu <- tp_pfu + get_vec(paste0("tp_i_pfu[", pidx, "]"))
+    }
+
+    if (stan_data$ind_effects && pidx > 0) {
+      dp_pfu <- dp_pfu * exp(get_vec(paste0("dp_i_pfu[", pidx, "]")))
+      wp_pfu <- wp_pfu * exp(get_vec(paste0("wp_i_pfu[", pidx, "]")))
+      wr_pfu <- wr_pfu * exp(get_vec(paste0("wr_i_pfu[", pidx, "]")))
     }
 
     if (stan_data$source_pfu) {
