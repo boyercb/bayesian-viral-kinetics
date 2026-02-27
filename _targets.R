@@ -108,7 +108,7 @@ list(
               chains = 4, iter_warmup = 1000, iter_sampling = 4000,
               adapt_delta = 0.95, max_treedepth = 12,
               init_method = "map",
-              threads_per_chain = 1)  # increase if OpenMP available (brew install libomp)
+              threads_per_chain = 4)
   ),
 
   # ── Generated quantities (post-hoc) ────────────────────────────────────────
@@ -241,7 +241,7 @@ list(
               chains = 4, iter_warmup = 1000, iter_sampling = 2000,
               adapt_delta = 0.95, max_treedepth = 12,
               init_method = "map",
-              threads_per_chain = 1)  # increase if OpenMP available
+              threads_per_chain = 4)
   ),
 
   tar_target(recovery_check, check_recovery(
