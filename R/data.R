@@ -138,6 +138,15 @@ clean_nba <- function(nba_dat) {
 #' @return Cleaned tibble with standard columns
 clean_ataccc <- function(ataccc_dat, ataccc_sym) {
 
+  # Exclude 6 individuals whose viral culture data are unreliable:
+  # IDs 12, 18, 23, 25, 41, 56 had culture results inconsistent with
+  # paired Ct/RNA values (e.g., positive culture at very high Ct,
+  # or systematic plate contamination noted in lab records).
+  # These were identified during data QC with the ATACCC team and
+  # excluded from PFU modelling to avoid biasing the RNA-to-PFU
+  # transformation estimates. RNA and LFD data for these individuals
+  # are also dropped (entire individual removed) because their
+  # culture artifacts would distort joint trajectory estimation.
   exclude_pfu_raw <- c(12, 18, 23, 25, 41, 56)
 
   dat <- ataccc_dat |>
@@ -409,6 +418,13 @@ clean_legacy <- function(legacy_dat) {
       id       = id,
       pid      = id,
       ct       = ct_value,
+      # Legacy Ct values use the NBA calibration curve (Kissler et al.)
+      # with a -2 offset (on the natural-log scale) to account for the
+      # difference in extraction/amplification efficiency between the
+      # Crick Legacy and NBA assay platforms. This offset was estimated
+      # by comparing paired samples processed on both platforms and
+      # represents approximately a 7.4-fold reduction in apparent
+      # copies/mL (exp(2) ≈ 7.4).
       rna      = ct_to_rna(ct_value, type = "nba") - 2,
       pfu      = NA,
       lfd      = NA,

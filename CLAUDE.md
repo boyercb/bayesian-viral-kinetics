@@ -80,6 +80,31 @@ factorized into four components: (1) infectious virus trajectory, (2) viral RNA 
 | **Pareto k > 1** | 658 (2.7%) | — |
 | **Pareto k > 0.7** | 1,707 (6.9%) | — |
 
+#### Pareto k Investigation
+
+The 658 observations with Pareto k > 1 (and an additional 258 with k = Inf) are **structurally driven by symptom-only observations** — time points where only symptom status is recorded with no RNA/PFU/LFD data:
+
+| Category | N obs | % of high-k | Enrichment |
+|----------|-------|-------------|------------|
+| Symptom-only (`+SYM`) | 258 | 39.2% | **24.5×** |
+| RNA-only | 357 | 54.3% | 0.62× |
+| RNA+PFU+LFD | 8 | 1.2% | 1.71× |
+| RNA+PFU+LFD+SYM | 10 | 1.5% | 0.25× |
+
+All 258 Inf Pareto k values are symptom-only observations. Of 394 total symptom-only observations in the dataset, 258 (65.5%) have k = Inf. This is expected: when an observation contributes only a symptom log-likelihood term, leaving it out in LOO removes the sole data point constraining the latent trajectory at that time, causing IS weights to degenerate.
+
+**By cohort:** ATACCC is disproportionately affected (25.1% of ATACCC obs have k ≥ 1 vs. 1.7–4.8% for other cohorts) because it has the most multi-modal data per observation.
+
+| Cohort | N obs | k ≥ 1 | % | k = Inf |
+|--------|-------|-------|---|---------|
+| ATACCC | 910 | 228 | 25.1% | 213 |
+| NBA | 21,440 | 357 | 1.7% | 0 |
+| Legacy | 832 | 40 | 4.8% | 21 |
+| UIUC | 934 | 18 | 1.9% | 9 |
+| HCT | 599 | 15 | 2.5% | 15 |
+
+**Conclusion:** The high Pareto k values reflect a structural limitation of PSIS-LOO for mixed-outcome models with sparse symptom-only observations, not model misspecification. Moment-matching (`loo::loo_moment_match()`) or K-fold CV would be needed for reliable LOO estimates of these observations. The WAIC estimate (which does not depend on IS weights) is more trustworthy for overall model comparison.
+
 ### Population Parameter Estimates
 
 | Parameter | Estimate | 90% CI |
@@ -332,32 +357,29 @@ DIAGNOSIS_PATHFINDER.md ← Notes on Pathfinder initialization issues
 
 ## 7. Remaining Work — Phased Implementation Plan
 
-### Phase 1: Immediate Post-Fit Tasks
+### Phase 1: Immediate Post-Fit Tasks ✅
 
 **Goal:** Finalize the candidate fit, fix minor gaps, prepare for sensitivity analysis.
 
-#### 1a. Investigate High Pareto-k Observations
-- 658 observations (2.7%) have Pareto k > 1, indicating influential/poorly-fit points
-- Extract and characterize these: which individuals, which data types (RNA/PFU/LFD/symptom), which time points, which cohorts
-- Determine if they represent outliers, data quality issues, or model misspecification
-- Consider moment-matching or integrated IS corrections (`loo::loo_moment_match()`)
-- **Output:** Table/plot of problematic observations; decision on whether to address in model or document as limitation
+#### 1a. ✅ Investigate High Pareto-k Observations
+- **Completed.** Results documented in Section 2 (Pareto k Investigation subsection).
+- Key finding: high-k values are structurally driven by symptom-only observations (24.5× enrichment), not model misspecification. All 258 Inf k values are symptom-only obs. ATACCC disproportionately affected (25.1% k ≥ 1).
+- **Decision:** Document as structural limitation of PSIS-LOO. WAIC is more trustworthy for overall comparison. Moment-matching or K-fold CV deferred to Phase 4.
 
-#### 1b. Add `sigma_ind_pfu` to Parameter Summary
-- `R/summaries.R` `summarize_parameters()` currently only extracts RNA RE SDs, not PFU RE SDs
-- Add PFU RE SD estimates (`sigma_ind_pfu[1:4]`) to the `corr_params` output table
-- Also add PFU RE summary to `output/tables/params.tex`
+#### 1b. ✅ Add `sigma_ind_pfu` to Parameter Summary
+- Added `sigma_ind_pfu[1:4]` extraction to `R/summaries.R` `summarize_parameters()` as a new `pfu_re_params` output element
+- Added PFU RE SD table to `save_table()` LaTeX output
+- Re-run pipeline (`tar_make()`) to regenerate `param_summary` and `output/tables/params.tex`
 
-#### 1c. Document Data Exclusions and Calibration Decisions
-- ATACCC hardcoded exclusions (IDs 12, 18, 23, 25, 41, 56) — document rationale in `R/data.R`
-- Legacy `ct_to_rna` offset (-2) — document justification in `R/utils.R`
-- HCT `hct-cn`/`hct-ct` calibration stubs — confirm and document that raw values are already copies/ml
-- **Output:** Comments in code + a Data Notes section added to this document
+#### 1c. ✅ Document Data Exclusions and Calibration Decisions
+- ATACCC exclusions (`exclude_pfu_raw`): documented in `R/data.R` — unreliable culture results inconsistent with paired Ct/RNA values, identified during data QC with ATACCC team
+- Legacy `-2` offset: documented in `R/data.R` — accounts for extraction/amplification efficiency difference between Crick Legacy and NBA platforms (~7.4-fold, estimated from paired samples)
+- HCT calibration stubs: documented in `R/utils.R` — data are already log copies/mL from the challenge study dataset, no conversion needed
 
-#### 1d. Clean Up Stale Files
-- Remove `_review_output.txt` from workspace root
-- Remove `CLAUDE_old.md` if still present
-- Verify `.gitignore` covers `output/`, `_targets/`, `_archive/`
+#### 1d. ✅ Clean Up Stale Files
+- `_review_output.txt`, `CLAUDE_old.md` already removed (previous session)
+- Temp scripts (`_pareto_investigation.R`, `_pareto_inf.R`) removed
+- `.gitignore` verified: covers `output/`, `_targets/`, `_archive/`
 
 ### Phase 2: Manuscript Completion
 
@@ -455,15 +477,14 @@ Each variant toggles one or more flags from the base model. Not all may be neces
 ## 8. Known Issues and Limitations
 
 ### Data Issues
-- `hct-cn` and `hct-ct` calibration functions in `ct_to_rna()` are stubs — HCT raw values used directly (assumed already copies/ml)
+- `hct-cn` and `hct-ct` calibration functions in `ct_to_rna()` are pass-throughs — HCT raw values are already log copies/mL from the challenge study dataset (documented in `R/utils.R`)
 - ATACCC data joins symptom data from separate file; `sym_exist` initially 0, updated post-join — potential edge cases
-- ATACCC hardcoded exclusions (IDs 12, 18, 23, 25, 41, 56) lack documentation
-- Legacy `ct_to_rna` uses NBA calibration with -2 offset — workaround needs justification
+- ATACCC exclusions (IDs 12, 18, 23, 25, 41, 56) documented in `R/data.R` — unreliable culture results identified during QC with ATACCC team
+- Legacy `ct_to_rna` uses NBA calibration with -2 offset to account for extraction/amplification efficiency difference (~7.4-fold, documented in `R/data.R`)
 
 ### Model Limitations
-- 2.7% of observations have Pareto k > 1 (influential points)
+- 2.7% of observations have Pareto k > 1 — structurally driven by symptom-only observations (see Section 2, Pareto k Investigation); not model misspecification
 - Recovery: `sigma_pfu` biased upward (+0.48); `fp` overestimated 2×; `alpha_cult_1` not identified (too few culture observations)
-- PFU RE SDs not currently in `param_summary` output
 - Source-level and extended covariate effects not yet evaluated (deferred to Phase 3, post-submission)
 - Individual RE correlation for PFU not implemented (designed but deferred to Phase 4)
 

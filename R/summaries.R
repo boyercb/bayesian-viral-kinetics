@@ -157,7 +157,7 @@ summarize_parameters <- function(fit, stan_data = NULL) {
       dplyr::bind_cols(
         tibble::tibble(
           parameter = paste0("sigma_ind_rna[", i, "]"),
-          label     = paste0("RE SD: ", re_labels[i])
+          label     = paste0("RNA RE SD: ", re_labels[i])
         ),
         summarize_rv(corr_draws$sigma_ind_rna[i], digits = 3)
       )
@@ -177,6 +177,27 @@ summarize_parameters <- function(fit, stan_data = NULL) {
     })
 
     corr_params <- dplyr::bind_rows(sigma_rows, omega_rows)
+  }
+
+  # --- PFU individual-effect SDs (if ind_effects is on) ---
+  pfu_re_params <- NULL
+  if (!is.null(stan_data) && isTRUE(stan_data$ind_effects == 1)) {
+    pfu_re_draws <- posterior::as_draws_rvars(
+      fit$draws(variables = "sigma_ind_pfu")
+    )
+
+    re_labels_pfu <- c("tp (peak time)", "dp (peak height)",
+                       "wp (proliferation)", "wr (clearance)")
+
+    pfu_re_params <- purrr::map_dfr(1:4, function(i) {
+      dplyr::bind_cols(
+        tibble::tibble(
+          parameter = paste0("sigma_ind_pfu[", i, "]"),
+          label     = paste0("PFU RE SD: ", re_labels_pfu[i])
+        ),
+        summarize_rv(pfu_re_draws$sigma_ind_pfu[i], digits = 3)
+      )
+    })
   }
 
   # --- model type label ---
@@ -199,6 +220,7 @@ summarize_parameters <- function(fit, stan_data = NULL) {
     error_params          = error_params,
     wf_params             = wf_params,
     corr_params           = corr_params,
+    pfu_re_params         = pfu_re_params,
     model_type            = model_type
   )
 }
@@ -364,6 +386,19 @@ save_table <- function(summary_obj, out_file) {
       )
       lines <- c(lines, "", "% --- Correlated RE parameters ---",
                  as.character(tbl_corr))
+    }
+
+    # PFU individual-effect SDs
+    if (!is.null(summary_obj$pfu_re_params)) {
+      tbl_pfu_re <- knitr::kable(
+        summary_obj$pfu_re_params[, c("label", "estimate", "ci_lo", "ci_hi")],
+        format = "latex", booktabs = TRUE,
+        col.names = c("Parameter", "Median", "2.5\\%", "97.5\\%"),
+        caption = "PFU individual-effect standard deviations",
+        escape = FALSE
+      )
+      lines <- c(lines, "", "% --- PFU RE parameters ---",
+                 as.character(tbl_pfu_re))
     }
 
     # model type annotation

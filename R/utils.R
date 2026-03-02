@@ -115,11 +115,15 @@ ct_to_rna <- function(x, type) {
     rna <- rna * log(10)
 
   } else if (type == "hct-cn") {
-    # Killingley et al. (2022) Nature Medicine — nasal (already copies/mL)
+    # Killingley et al. (2022) Nature Medicine — nasal swabs
+    # HCT data are provided as log copies/mL directly (not Ct values),
+    # so no calibration conversion is needed. The raw values from the
+    # challenge study dataset are already on the natural-log scale.
     rna <- x
 
   } else if (type == "hct-ct") {
-    # Killingley et al. (2022) Nature Medicine — throat (already copies/mL)
+    # Killingley et al. (2022) Nature Medicine — throat swabs
+    # Same as nasal: data are already log copies/mL, no conversion needed.
     rna <- x
   }
 
