@@ -359,80 +359,77 @@ DIAGNOSIS_PATHFINDER.md ← Notes on Pathfinder initialization issues
 - Remove `CLAUDE_old.md` if still present
 - Verify `.gitignore` covers `output/`, `_targets/`, `_archive/`
 
-### Phase 2: Sensitivity Analysis
+### Phase 2: Manuscript Completion
 
-**Goal:** Formally compare model variants via WAIC/LOO, saving each fit for reproducibility.
+**Goal:** Write all remaining manuscript sections using candidate fit results.
 
-#### 2a. Build Sensitivity Analysis Infrastructure
-- Create `R/sensitivity.R` with functions:
-  - `run_sensitivity_model(label, flag_overrides, stan_data, ...)` — fits a model variant with specified flag overrides, returns fit + diagnostics
-  - `compare_models(results_list)` — computes WAIC/LOO comparison table using `loo::loo_compare()`, returns formatted output
-  - `save_sensitivity_result(label, fit, loo, waic, convergence)` — stores results with metadata to `output/sensitivity/`
-- Add sensitivity targets to `_targets.R` (or a separate `_targets_sensitivity.R` pipeline)
-- Design decision: run as separate `targets` pipeline (to avoid invalidating the base fit) or use `tar_target_raw()` / dynamic branching
-
-#### 2b. Define Sensitivity Analysis Grid
-
-Each variant toggles one or more flags from the base model:
-
-| Label | Change from base | Flags |
-|-------|-----------------|-------|
-| `base` | Candidate fit (current) | — |
-| `source_rna` | Source REs on RNA | `source_rna = 1` |
-| `source_pfu` | Source REs on PFU | `source_pfu = 1` |
-| `source_lfd` | Source REs on LFD | `source_lfd = 1` |
-| `source_sym` | Source REs on symptoms | `source_sym = 1` |
-| `source_all` | All source REs | all source flags = 1 |
-| `adj_pfu` | Covariate effects on PFU | `adj_pfu = 1` |
-| `adj_lfd` | Covariate effects on LFD | `adj_lfd = 1` |
-| `adj_sym` | Covariate effects on symptoms | `adj_sym = 1` |
-| `adj_all` | All covariate effects | all adj flags = 1 |
-| `full` | All toggles on | all source + adj flags = 1 |
-| `no_corr` | Independent RNA REs | `ind_corr = 0` |
-| `no_smooth` | Sharp piecewise exponential | `use_smooth = 0` |
-
-#### 2c. Run and Compare
-- Run each variant (~16 hr each × 13 variants = ~9 days serial, parallelizable on cluster)
-- For each: check convergence (reject if max Rhat > 1.1 or divergences > 0)
-- GQ pass + LOO/WAIC for each converged fit
-- Compare via `loo::loo_compare()` on WAIC and PSIS-LOO elpd
-- **Output:** Model comparison table (for manuscript), elpd difference forest plot, table of convergence outcomes
-
-#### 2d. Interpret and Select Final Model
-- If any variant improves WAIC by >4 SE, consider adopting
-- If source effects are non-negligible, document heterogeneity across cohorts
-- If covariate effects on PFU/LFD/symptoms improve fit, incorporate into final model
-- Update this document with final model selection rationale
-
-### Phase 3: Manuscript Completion
-
-**Goal:** Write all remaining manuscript sections using final model results.
-
-#### 3a. Empty Sections to Write
+#### 2a. Empty Sections to Write
 
 | Section | Content Needed |
 |---------|---------------|
 | **2.4 Symptoms** | Background on symptom diaries as infectiousness proxies, prior literature |
 | **5 Computation** | Stan implementation details, NCP, threading, Pathfinder init, convergence criteria, software versions |
-| **6 Model checking** | Prior/posterior predictive checks, LOO/WAIC, parameter recovery, sensitivity analysis results |
+| **6 Model checking** | Prior/posterior predictive checks, LOO/WAIC, parameter recovery results |
 | **7.1–7.2** | Individual-level trajectory fits, covariate effects interpretation |
 | **7.3 Population parameters** | Population-level estimates table and interpretation |
 | **7.4 Transmission models** | Application to testing/isolation policy (probability curves) |
 | **8 Discussion** | Summary of findings, limitations, comparison to prior modeling approaches, future directions |
 
-#### 3b. Supporting Manuscript Tasks
+#### 2b. Supporting Manuscript Tasks
 - Set up bibliography (`.bib` file — currently commented out in `main.tex`)
 - Add figure/table captions in supplement
-- Incorporate sensitivity analysis results (Phase 2 output) as a table
 - Incorporate parameter recovery results as a figure/table
 - Cross-reference all generated figures from `output/figures/`
 - Update presentation (`doc/presentations/demo.tex`) with final results
 
-#### 3c. Resolve Multi-Paper Structure
+#### 2c. Resolve Multi-Paper Structure
 - `paper1_model/` — empty
 - `paper2_meta/` — partially started, content mostly duplicates main manuscript
 - `paper3_application/` — empty
 - **Decision needed:** Is this one paper or a series? If one paper, consolidate and remove empty folders. If series, define scope boundaries.
+
+### Phase 3: Sensitivity Analysis (Post-Submission)
+
+**Goal:** Formally compare model variants via WAIC/LOO as a follow-up analysis. Can be added after initial submission; some variants may be redundant and the grid should be refined based on reviewer feedback or scientific priorities.
+
+#### 3a. Build Sensitivity Analysis Infrastructure
+- Create `R/sensitivity.R` with functions:
+  - `run_sensitivity_model(label, flag_overrides, stan_data, ...)` — fits a model variant with specified flag overrides, returns fit + diagnostics
+  - `compare_models(results_list)` — computes WAIC/LOO comparison table using `loo::loo_compare()`, returns formatted output
+  - `save_sensitivity_result(label, fit, loo, waic, convergence)` — stores results with metadata to `output/sensitivity/`
+- Add sensitivity targets to `_targets.R` (or a separate `_targets_sensitivity.R` pipeline)
+
+#### 3b. Candidate Sensitivity Analysis Grid
+
+Each variant toggles one or more flags from the base model. Not all may be necessary — prioritize based on scientific questions and reviewer feedback:
+
+| Label | Change from base | Flags | Priority |
+|-------|-----------------|-------|----------|
+| `base` | Candidate fit (current) | — | — |
+| `source_all` | All source REs | all source flags = 1 | High — tests cross-cohort heterogeneity |
+| `adj_pfu` | Covariate effects on PFU | `adj_pfu = 1` | Medium — do covariates affect infectiousness directly? |
+| `adj_sym` | Covariate effects on symptoms | `adj_sym = 1` | Medium — do covariates affect symptom onset? |
+| `no_corr` | Independent RNA REs | `ind_corr = 0` | High — does correlation structure matter? |
+| `no_smooth` | Sharp piecewise exponential | `use_smooth = 0` | Low — smoothing is mechanistically motivated |
+| `source_rna` | Source REs on RNA only | `source_rna = 1` | Low — subsumed by `source_all` |
+| `source_pfu` | Source REs on PFU only | `source_pfu = 1` | Low — subsumed by `source_all` |
+| `source_lfd` | Source REs on LFD only | `source_lfd = 1` | Low — subsumed by `source_all` |
+| `source_sym` | Source REs on symptoms only | `source_sym = 1` | Low — subsumed by `source_all` |
+| `adj_lfd` | Covariate effects on LFD | `adj_lfd = 1` | Low — LFD data limited |
+| `adj_all` | All covariate effects | all adj flags = 1 | Medium |
+| `full` | All toggles on | all source + adj flags = 1 | Medium — kitchen sink model |
+
+#### 3c. Run and Compare
+- Run each variant (~16 hr each; parallelizable on cluster)
+- For each: check convergence (reject if max Rhat > 1.1 or divergences > 0)
+- GQ pass + LOO/WAIC for each converged fit
+- Compare via `loo::loo_compare()` on WAIC and PSIS-LOO elpd
+- **Output:** Model comparison table, elpd difference forest plot
+
+#### 3d. Interpret and Select Final Model
+- If any variant improves WAIC by >4 SE, consider adopting
+- If source effects are non-negligible, document heterogeneity across cohorts
+- Incorporate results into manuscript revision if needed
 
 ### Phase 4: Extended Model Features (Optional/Future)
 
@@ -440,14 +437,12 @@ Each variant toggles one or more flags from the base model:
 - Full design plan in `DESIGN_NOTE_IND_CORR.md`
 - Would add 4×4 Cholesky correlation for PFU REs (mirroring RNA)
 - Only meaningful if PFU data is rich enough (N_pfu_ind=275, but each has few observations)
-- Include in sensitivity analysis grid if implemented
 
 #### 4b. K-fold Cross-Validation
 - Already scaffolded in `_targets.R` (commented out)
 - Grouped by individual (leave-one-individual-out)
 - Budget: ~K × 16 hr — likely needs cluster
 - Provides more robust model comparison than PSIS-LOO for the 2.7% of observations with high Pareto k
-- Consider as a follow-up validation of the best model from Phase 2
 
 #### 4c. Additional Applications
 - Testing/isolation policy probability curves (partially done in presentation)
@@ -469,7 +464,7 @@ Each variant toggles one or more flags from the base model:
 - 2.7% of observations have Pareto k > 1 (influential points)
 - Recovery: `sigma_pfu` biased upward (+0.48); `fp` overestimated 2×; `alpha_cult_1` not identified (too few culture observations)
 - PFU RE SDs not currently in `param_summary` output
-- Source-level and extended covariate effects not yet evaluated (pending Phase 2)
+- Source-level and extended covariate effects not yet evaluated (deferred to Phase 3, post-submission)
 - Individual RE correlation for PFU not implemented (designed but deferred to Phase 4)
 
 ### Infrastructure
