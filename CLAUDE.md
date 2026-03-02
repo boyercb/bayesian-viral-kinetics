@@ -1,6 +1,8 @@
-# Comprehensive Status Report: Bayesian Joint Model of Viral Kinetics
+# Bayesian Joint Model of Viral Kinetics — Project Status
 
-*Generated: February 10, 2026*
+*Last updated: March 1, 2026*
+
+---
 
 ## 1. Project Overview
 
@@ -22,199 +24,492 @@ factorized into four components: (1) infectious virus trajectory, (2) viral RNA 
 
 ---
 
-## 2. What Has Been Done
+## 2. Candidate Model Fit (Run 3)
 
-### Theory & Manuscript
+### Fit Metadata
 
-The manuscript (`4_manuscripts/main.tex`) has a **well-developed theory section** covering:
+| Field | Value |
+|-------|-------|
+| **Git commit** | `ec42f02` (main) |
+| **Fit timestamp** | 2026-02-28 10:18:59 UTC |
+| **Stan model** | `stan/kinetics_model.stan` |
+| **GQ model** | `stan/kinetics_model_gq.stan` |
+| **MCMC config** | 4 chains × 1000 warmup × 4000 sampling, adapt_delta=0.95, max_treedepth=12, 4 threads/chain |
+| **Recovery config** | 4 chains × 1000 warmup × 2000 sampling, same tuning, 50% subsample |
+| **Targets store** | `_targets/` (all 34 targets completed) |
+| **Stan CSV dir** | `output/stan_csv/` (on remote: `christopherboyer/Dropbox/...`) |
 
-- Introduction and motivation (complete)
-- Background on proxies for infectiousness (complete for culture, RNA, antigens; **Symptoms subsection is empty**)
-- The full model specification including:
-  - Piecewise exponential model for infectious virus (V_t)
-  - Linked piecewise exponential for viral RNA (R_t)
-  - Symptom onset model (discrete-time hazard)
-  - Observation models for all assay types (culture, TCID50, PFU/FFA, qPCR, LFD)
-  - Covariate effects and individual random effects
-  - Missing data framework
+### Key Targets and Timestamps (all 2026-02-28)
 
-### Two Stan Models Implemented
+| Target | Timestamp | Runtime |
+|--------|-----------|---------|
+| `kinetics_mcmc` | 10:18:59 | 16.5 hr |
+| `gq_fit` | 10:31:37 | 3.6 min |
+| `convergence` | 10:27:17 | 6.9 min |
+| `ppc` | 10:41:54 | 8.4 min |
+| `loo_result` | 11:00:15 | 10.0 min |
+| `waic_result` | 10:50:17 | 8.4 min |
+| `predictions` | 10:19:59 | 1.0 min |
+| `param_summary` | 10:33:07 | 0.7 min |
+| `recovery_mcmc` | 17:15:34 | 6.3 hr |
+| **Total pipeline** | — | **23.5 hr** |
 
-1. **`kinetics_model.stan`** (357 lines) — an earlier/simpler version:
-   - Single piecewise exponential for RNA with covariate effects
-   - RNA-to-PFU transformation via multiplicative scaling (ρ parameters)
-   - LFD modeled as logistic function of RNA_hat and PFU_hat
-   - Test error mixture model for RNA
-   - No symptom modeling
-   - No dedicated individual effects for PFU trajectory
-   - A saved `.rds` fit object exists for this model
+### Convergence Summary
 
-2. **`kinetics_model.stan`** (~670 lines) — the **current/evolved version**:
-   - Separate individual random effects for both RNA and PFU trajectories
-   - RNA-to-PFU transformation via **log-affine form**: log δ' = a₀ + a₁ · log δ (equivalently δ' = e^{a₀} · δ^{a₁}), **consistent across code, manuscript, and presentation**
-   - Symptom onset via **discrete-time cloglog hazard** with individual random effect (NCP): P(Y=1) = 1 - exp(-exp(η₀ + η₁ log V + η₂ log R + u_i)), **consistent across code, manuscript, and presentation**
-   - Source-level random effects (toggleable) for PFU, RNA, LFD, and symptoms
-   - Multiple viral culture assay types (PFU, TCID50, simple culture)
-   - Test error mixture for both RNA and PFU
-   - Full set of model specification flags, all implemented:
-     - `test_error` — mixture model for false positives/negatives ✅
-     - `ind_effects` — individual REs on peak, proliferation, clearance ✅
-     - `adj_pfu` — covariate effects on PFU kinetics ✅ (toggled off)
-     - `adj_rna` — covariate effects on RNA kinetics ✅ (toggled on)
-     - `adj_lfd` — covariate effects on LFD positivity ✅ (toggled off)
-     - `adj_sym` — covariate effects on symptom hazard ✅ (toggled off)
-     - `source_pfu` — source-level REs on PFU ✅ (toggled off)
-     - `source_rna` — source-level REs on RNA ✅ (toggled off)
-     - `source_lfd` — source-level REs on LFD ✅ (toggled off)
-     - `source_sym` — source-level REs on symptoms ✅ (toggled off)
-   - Planned extension: correlated individual random effects (`ind_corr`) — see `DESIGN_NOTE_IND_CORR.md`
+| Metric | Value |
+|--------|-------|
+| **Divergences** | 0 |
+| **Max treedepth hits** | 0 |
+| **E-BFMI** | 0.684, 0.703, 0.696, 0.688 (all healthy) |
+| **Max Rhat** | 1.029 (`L_Omega_rna[4,3]`) |
+| **Params Rhat > 1.01** | 17 (all RNA correlation matrix; none > 1.05) |
+| **PFU params Rhat > 1.01** | **0** |
+| **Min ESS bulk** | 183 (`L_Omega_rna[4,1]`) |
+| **Min ESS tail** | 328 (`L_Omega_rna[4,3]`) |
 
-### Code Pipeline
+**Verdict:** Production-quality fit. All PFU convergence issues resolved by NCP. Mild remaining ESS shortfall in RNA correlation matrix only.
 
-The master script (`__master_run.R`) orchestrates:
+### Model Comparison (LOO/WAIC)
 
-1. **`functions.R`** — helper functions including `ct_to_rna()` calibrations, `pefun()`, `predict_kinetics()`, `prior_predictive()`
-2. **`clean_data.R`** — data harmonization for all 5 cohorts into a stacked dataset + Stan-ready list
-3. **`prior_predictive.R`** — prior predictive checks (plots generated)
-4. **`fit_model.R`** — compiles `kinetics_model.stan`, runs MCMC (4 chains, 1000 warmup, 2000 sampling), saves to `.rds`
-5. **`check_model.R`** — **essentially empty** (has placeholder comments only)
-6. **`model_summaries.R`** — extracts posterior summaries and creates LaTeX tables (references `kinetics_model.stan` variables like `rho_dp`, not the `kinetics_model` variables like `tau_dp`)
-7. **`prediction.R`** — generates posterior predictive trajectories + individual-level fit plots (also references **old** model variables)
+| Metric | Value | SE |
+|--------|-------|----|
+| **LOO elpd** | -45,743 | 208 |
+| **p_loo** | 4,736 | 56 |
+| **WAIC elpd** | -45,320 | 209 |
+| **p_waic** | 4,313 | 62 |
+| **Pareto k > 1** | 658 (2.7%) | — |
+| **Pareto k > 0.7** | 1,707 (6.9%) | — |
 
-### Generated Outputs
+### Population Parameter Estimates
 
-- **Figures (`3_figures/`):** Prior predictive plots, trace plots, individual fit plots for ATACCC/NBA/UIUC/HCT, TCL ODE examples, testing policy probability plots
-- **Supplement tables:** Posterior estimates for peak, proliferation, and clearance (appear to come from the **older** `kinetics_model` fit)
-- **Presentation (`demo.tex`):** ~90 slides with full model description, data tables, prior checks, select results, and application analysis (testing/isolation policy)
+| Parameter | Estimate | 90% CI |
+|-----------|----------|--------|
+| Peak log-RNA ($d_p$) | 16.18 | (15.65, 16.73) |
+| Proliferation rate ($w_p$) | 5.34 | (4.64, 6.18) |
+| Clearance rate ($w_r$) | 13.74 | (12.42, 15.19) |
+| RNA observation SD | 2.24 | (2.21, 2.27) |
+| PFU observation SD | 2.22 | (2.01, 2.47) |
+| False positive rate | 0.019 | (0.016, 0.023) |
+| False negative rate | ~0 | (~0, ~0) |
 
-### Side Projects
+**RNA-to-PFU transformation (log-affine):**
 
-- **Simulation study (`1_code/simstudy/`):** Compares target-cell limited ODE model vs. piecewise exponential vs. smoothed piecewise — appears complete as a standalone investigation
-- **`run_ct_model.R`:** Fits a Ct-only model to NBA data — earlier standalone analysis
-- **`chain_binomial.R`:** Toy chain binomial transmission model — appears to be a sketch
-- **`paper2_meta/`:** A separate manuscript framed as a meta-analysis/IPD analysis — partially started (data/methods sections with content recycled from paper 1; empty results/discussion)
-- **`paper3_application/`:** Empty folder
+| Parameter | Estimate | 90% CI |
+|-----------|----------|--------|
+| PFU peak intercept ($a_0^{dp}$) | -0.93 | (-2.19, 0.30) |
+| PFU peak elasticity ($a_1^{dp}$) | 1.07 | (0.65, 1.50) |
+| PFU prolif intercept ($a_0^{wp}$) | -0.64 | (-1.33, 0.00) |
+| PFU prolif elasticity ($a_1^{wp}$) | 0.77 | (0.45, 1.12) |
+| PFU clear intercept ($a_0^{wr}$) | -0.02 | (-0.63, 0.56) |
+| PFU clear elasticity ($a_1^{wr}$) | 0.66 | (0.44, 0.88) |
+
+**Symptom model (cloglog hazard):**
+
+| Parameter | Estimate | 90% CI |
+|-----------|----------|--------|
+| Intercept ($\eta_0$) | -1.47 | (-1.90, -1.02) |
+| log-PFU effect ($\eta_1$) | 0.71 | (0.23, 1.31) |
+| log-RNA effect ($\eta_2$) | 1.22 | (0.59, 1.85) |
+| Symptom RE SD | 0.83 | (0.58, 1.13) |
+
+**Individual RE standard deviations (RNA):**
+
+| Parameter | Estimate | 90% CI |
+|-----------|----------|--------|
+| RE SD: peak time ($\tau_p$) | 0.239 | (0.193, 0.287) |
+| RE SD: peak height ($d_p$) | 0.161 | (0.154, 0.168) |
+| RE SD: proliferation ($w_p$) | 0.631 | (0.594, 0.669) |
+| RE SD: clearance ($w_r$) | 0.508 | (0.486, 0.531) |
+
+**RNA individual RE correlations:**
+
+| Pair | Estimate | 90% CI |
+|------|----------|--------|
+| Corr($\tau_p$, $d_p$) | -0.22 | (-0.40, -0.04) |
+| Corr($\tau_p$, $w_p$) | -0.54 | (-0.72, -0.35) |
+| Corr($\tau_p$, $w_r$) | 0.28 | (0.12, 0.44) |
+| Corr($d_p$, $w_p$) | -0.25 | (-0.33, -0.17) |
+| Corr($d_p$, $w_r$) | 0.21 | (0.15, 0.28) |
+| Corr($w_p$, $w_r$) | -0.38 | (-0.44, -0.30) |
+
+### Parameter Recovery (Simulation Study)
+
+- **Coverage:** 26/34 parameters (76.5%) covered by 95% CI
+- **Non-covered (8):** `wp_mean_rna` (narrow miss), `sigma_rna` (tight CI), `sigma_pfu` (upward bias +0.48), `eta_sym_intercept` (bias toward 0), `fp` (overestimated 2×), `fn` (prior-dominated), `alpha_tcid50_log_b` (shrinkage), `alpha_cult_1` (not identified — too few observations)
+
+### Covariate Effects (selected highlights)
+
+- **Delta variant** increases peak RNA by 17% (1.12, 1.22)
+- **Vaccination (boosted)** reduces peak RNA by 13% (0.84, 0.90) and prolongs proliferation by 45% (1.20, 1.75)
+- **Recurrence** reduces peak by 4% (0.94, 0.99), shortens proliferation by 17% (0.73, 0.95), and shortens clearance by 24% (0.70, 0.83)
+- **Age ≥50** increases clearance time by 19% (1.11, 1.29)
+- **Unvaccinated unboosted** shows 32% slower clearance (0.60, 0.78)
+
+### Generated Outputs (from this fit)
+
+**Figures** (`output/figures/`):
+- `ataccc_fit.pdf`, `hct_fit.pdf`, `legacy_fit.pdf`, `nba_fit.pdf`, `uiuc_fit.pdf` — individual trajectory fits by cohort
+- `corr_densities.pdf`, `corr_matrix.pdf` — RNA RE correlation posteriors
+- `forest_covariates.pdf` — covariate effect forest plots
+- `param_recovery.pdf` — recovery simulation coverage
+- `ppc_lfd_calibration.pdf`, `ppc_pfu.pdf`, `ppc_rna.pdf` — posterior predictive checks
+- `prior_pe.pdf`, `prior_sym.pdf`, `prior_trajectories.pdf`, `prior_trans_pe.pdf` — prior predictive checks
+- `tcl_example_1.pdf`, `tcl_example_2.pdf` — ODE comparison
+- `trace_plots.pdf` — MCMC trace plots
+
+**Tables** (`output/tables/`):
+- `convergence.tex` — convergence diagnostics
+- `params.tex` — parameter estimates
+- `table1.tex` — data summary (Table 1)
 
 ---
 
-## 3. Critical Gaps & Mismatches
+## 3. Development History
 
-### A. Model Code vs. Manuscript Misalignment
+### Convergence Journey
 
-| Component | Manuscript | Generative Stan Model | Status |
-|---|---|---|---|
-| RNA-to-PFU transformation | log δ' = a₀ + a₁ · log δ (log-affine) | log δ' = a₀ + a₁ · log δ (log-affine) | **Resolved** — now consistent |
-| Symptom onset | Discrete-time cloglog hazard with individual RE: P(Y=1) = 1-exp(-exp(η₀ + η₁ log V + η₂ log R + u_i)) | Discrete-time cloglog hazard with NCP individual RE | **Resolved** — now consistent |
-| Covariate effects on PFU | Manuscript implies β' effects on RNA-derived PFU params | Code has `adj_pfu = 0` (disabled but **fully implemented**) | Ready to toggle on |
-| Covariate effects on symptoms | Can be added to cloglog linear predictor | Code has `adj_sym = 0` (disabled but **fully implemented**) | Ready to toggle on |
-| Source random effects (RNA/PFU) | Described in manuscript | Toggled off but **fully implemented** (`source_pfu = 0`, `source_rna = 0`) | Ready to toggle on |
-| Source random effects (LFD) | Implied | Toggled off but **fully implemented** (`source_lfd = 0`) | Ready to toggle on |
-| Individual RE correlation | Mentioned conceptually | Commented-out; full design plan in `DESIGN_NOTE_IND_CORR.md` | Planned — not yet implemented |
+#### Run 1 (commit `4b9863`, ~Feb 2026)
+- **Configuration:** Centered parameterization, PFU REs for all 2,261 individuals (9,044 params), wide priors
+- **Result:** Catastrophic. E-BFMI < 0.07, max Rhat 2.46, 19% of params with Rhat > 1.01
+- **Diagnosis:** Too many weakly-informed PFU individual effects; Neal's funnel geometry
 
-### B. Post-processing Code Uses Wrong Model
+#### Fixes Applied After Run 1
+1. **Restrict PFU REs to PFU-informed individuals** (`b9548f6`): 9,044 → ~1,100 PFU RE params (N_pfu_ind=275)
+2. **Tight prior on PFU RE SD** (`9ed8b70`): half-normal(0, 0.3) on sigma_ind_pfu
+3. **Restore fmin constraint** (`72c94e5`): PFU ≤ RNA at all times
+4. **Fix prediction indexing** (`2b15b93`): subscript out-of-bounds with PFU RE restriction
 
-`1_code/model_summaries.R` and `1_code/prediction.R` reference parameter names from `kinetics_model.stan` (e.g., `rho_dp`, `rho_wp`, `theta_tp`, `log_dpi`, `beta_dp`, `gamma`, `gamma0`) rather than from `kinetics_model.stan` (which uses `tau_dp`, `tau_wp`, `tau_tp`, `dp_i_rna`, `beta_dp_rna`, `tau_lfd`, `tau0_lfd`). This means:
+#### Run 2 (~Feb 2026)
+- **Configuration:** PFU REs restricted, tight prior, centered parameterization, 2000 iterations, 1 thread/chain
+- **Result:** Major improvement. E-BFMI 0.13–0.58, max Rhat 1.44, 570 params with Rhat > 1.01
+- **Diagnosis:** Residual funnel in sigma_ind_pfu[1] (Rhat 1.44, ESS 8) — all 275 `tp_i_pfu` partially stuck
+- **Runtime:** 11.0 hr
 
-- **If you re-fit with `kinetics_model.stan`, all summary/prediction code will break.**
-- The existing results in the supplement/presentation likely come from the **older** `kinetics_model` fit.
+#### Fixes Applied After Run 2
+1. **Non-centered parameterization (NCP) for all 4 PFU REs** (`2c46dca`): `tp_i_pfu ~ N(0, σ)` → `z_tp_pfu ~ N(0,1)`, reconstruct in transformed parameters. Breaks funnel coupling.
+2. **Doubled sampling iterations** (`2c46dca`): 2000 → 4000 iter_sampling
+3. **Threading** (`ec42f02`): threads_per_chain = 4 (exploits reduce_sum parallelism in Stan model)
 
-### C. Incomplete Manuscript Sections
+#### Run 3 — Candidate Fit (2026-02-28, commit `ec42f02`)
+- **Result:** Production-quality. E-BFMI 0.68–0.70, max Rhat 1.029, **17** params with Rhat > 1.01 (all RNA correlation), **zero PFU convergence issues**, min ESS bulk 183, min ESS tail 328
+- **Runtime:** 16.5 hr main fit, 23.5 hr total pipeline
 
-- **Section 2.4 (Symptoms):** Empty background text (the model specification itself is complete)
-- **Section 5 (Computation):** Empty
-- **Section 6 (Model checking and inference):** Empty
-- **Section 7 (Results):** Only contains two figure references (probability plots) and subsection headers
-- **Section 7.3 (Population parameters):** Empty
-- **Section 7.4 (Transmission models):** Empty
-- **Section 8 (Discussion):** Empty
-- **Bibliography:** No `.bib` file referenced (commented out)
-- **Figure/table captions:** All empty in supplement
-- Various placeholder text ("Figure X", "between X and Y%")
-
-### D. Incomplete Code
-
-- ~~`1_code/check_model.R` is **essentially empty**~~ **DONE.** Replaced by `R/diagnostics.R` with `check_convergence()`, `compute_loo()`, `posterior_predictive_check()`, `plot_traces()`
-- ~~No `generated quantities` block in either Stan model for posterior predictive checks or LOO-CV~~ **DONE.** `generated quantities` block added to `kinetics_model.stan` with observation-level `log_lik` for LOO-CV and posterior predictive draws (`rna_rep`, `pfu_rep`, `lfd_rep`, `sym_rep`)
-- ~~The `predict_kinetics()` function in `1_code/functions.R` only works with `kinetics_model.stan` parameters~~ **DONE.** `predict_kinetics()` in `R/model.R` updated to use `kinetics_model.stan` parameter names
-- Legacy dataset calibration (`ct_to_rna` type "nba" with a -2 offset) is a workaround that should be documented/justified
-- HCT calibration functions (`hct-cn`, `hct-ct`) are **empty** — the raw qPCR values are used directly (already in copies/ml)
-
-### E. Data Issues
-
-- `hct-cn` and `hct-ct` calibration functions in `ct_to_rna()` have no implementation — just comments
-- The ATACCC data joins symptom data from a separate file but `sym_exist` is set to 0 initially and only updated after the join — there may be edge cases
-- Some hardcoded exclusions (ATACCC IDs 12, 18, 23, 25, 41, 56) lack documentation
-- ~~The NBA plot code references source 2 (ATACCC) for the NBA section — likely a copy-paste error~~ **DONE.** `plot_source_trajectories()` takes `source_id` as parameter
-
----
-
-## 4. Recommendations
-
-### Modeling & Theory
-
-1. ~~**Reconcile model specifications.**~~ **DONE.** RNA-to-PFU transformation unified to log-affine form across Stan model, manuscript, functions.R, and presentation.
-2. ~~**Upgrade symptom model.**~~ **DONE.** Replaced random-effect offset with discrete-time cloglog hazard with individual RE, consistent across all files.
-3. ~~**Add `generated quantities` block**~~ **DONE.** Block added to `kinetics_model.stan` with: (a) observation-level `log_lik` array that accumulates across RNA/PFU/LFD/symptom components for LOO-CV, (b) posterior predictive draws (`rna_rep`, `pfu_rep`, `lfd_rep`, `sym_rep`) faithful to the observation model including LOD censoring, assay-specific PFU types, and cloglog symptom hazard.
-4. ~~**Consider correlated individual random effects.**~~ **Designed.** Full implementation plan in `DESIGN_NOTE_IND_CORR.md`. Recommends starting with 4×4 RNA-only correlation via Cholesky NCP.
-5. ~~**Source-level effects should be evaluated.**~~ **All implemented.** `source_lfd` was the last gap — now fully implemented. All source flags (`source_pfu`, `source_rna`, `source_lfd`, `source_sym`) are ready to toggle on.
-6. ~~**Covariate effects on symptoms.**~~ **Implemented.** `adj_sym` flag added with `beta_sym` coefficients on the cloglog linear predictor.
-
-### Code Quality & Organization
-
-1. ~~**Consolidate Stan models.**~~ **DONE.** Project restructured to `targets`-idiomatic layout. Active Stan model (`kinetics_model.stan`) lives in top-level `stan/`. All old models (`kinetics_model.stan`, test files, archived variants) moved to `stan/_archive/` and `_archive/code/`.
-2. ~~**Update `model_summaries.R` and `prediction.R`**~~ **DONE.** `predict_kinetics()` in `R/model.R` now uses correct parameter names from `kinetics_model.stan` (e.g., `tau0_dp`/`tau_dp` instead of `rho_dp`/`theta_tp`). Parameter summaries in `R/summaries.R` updated to match.
-3. ~~**Implement `check_model.R`**~~ **DONE.** `R/diagnostics.R` implements `check_convergence()` (R-hat, ESS, divergences), `compute_loo()` (PSIS-LOO via `loo` package on `log_lik`), `posterior_predictive_check()` (extracts rna_rep/pfu_rep/lfd_rep), and `plot_traces()`.
-4. ~~**Add documentation.**~~ **DONE.** All functions in `R/` have roxygen-style headers with `@param`/`@return`. Each file has a purpose header.
-5. ~~**Remove dead code.**~~ **DONE.** Old imperative scripts archived to `_archive/code/`. New `R/` files contain only clean, active function definitions.
-6. ~~**Fix the copy-paste error**~~ **DONE.** `plot_source_trajectories()` in `R/predictions.R` now takes `source_id` as a parameter — no hardcoded source filtering.
-7. **Document data exclusions and calibration decisions** — especially the ATACCC exclusions and the Legacy offset. *(Still TODO — requires domain knowledge writeup)*
-
-### Project Structure (migrated to `targets`)
-
-The project has been restructured from numbered folders + `__master_run.R` to a `targets`-based pipeline:
+### Git History (chronological)
 
 ```
-_targets.R              ← Pipeline definition (replaces __master_run.R)
+02e3070 Initial commit
+f9046a7 initial setup
+8b1fe7f updates
+71c7f62 Restructure project to targets pipeline layout
+0853101 Fix Stan to_int error: mark pfu_obs as data vector in partial_sum_ll
+e46b16a fix: disable flat-top (use_wf=0), LKJ(2)->LKJ(4) for regularization
+22fe215 feat: mechanistic interval-censored normal TCID50 model, fix sim bugs
+1942404 docs: update TCID50 specification to mechanistic interval-censored normal
+8387013 feat: sample_trajectories() for ABM agent trajectory generation
+1e022a5 Add sigma_ind_pfu as learned hierarchical SD for PFU individual effects
+31feaf7 Fix PFU trajectory scale: variance decomposition + RNA ceiling
+72c94e5 Mode 2: residual PFU REs with propagated RNA variation + fmin constraint
+b9548f6 Restrict PFU individual effects to PFU-informed individuals
+9ed8b70 Add tighter half-normal(0, 0.3) prior on PFU RE hyperparameters
+2b15b93 Fix subscript out of bounds in predictions with PFU RE restriction
+2c46dca NCP for PFU individual effects; increase sampling to 4000 iterations
+ec42f02 Set threads_per_chain = 4 for main and recovery runs
+```
+
+---
+
+## 4. Current Model Specification
+
+### Stan Model Flags (current settings in `_targets.R`)
+
+| Flag | Value | Description |
+|------|-------|-------------|
+| `ind_effects` | 1 | Individual REs on peak time, peak height, proliferation, clearance |
+| `test_error` | 1 | Mixture model for false positives/negatives |
+| `adj_rna` | 1 | Covariate effects on RNA kinetics |
+| `ind_corr` | 1 | Correlated RNA individual REs (4×4 Cholesky LKJ) |
+| `use_smooth` | 1 | Smoothed piecewise exponential (vs. sharp corners) |
+| `use_wf` | 0 | Flat-top/plateau period (disabled) |
+| `adj_pfu` | — | **Not toggled on** (fully implemented in Stan) |
+| `adj_lfd` | — | **Not toggled on** (fully implemented in Stan) |
+| `adj_sym` | — | **Not toggled on** (fully implemented in Stan) |
+| `source_pfu` | — | **Not toggled on** (fully implemented in Stan) |
+| `source_rna` | — | **Not toggled on** (fully implemented in Stan) |
+| `source_lfd` | — | **Not toggled on** (fully implemented in Stan) |
+| `source_sym` | — | **Not toggled on** (fully implemented in Stan) |
+
+### Parameterization Details
+
+- **RNA trajectory:** Smoothed piecewise exponential with individual REs (correlated 4×4 via Cholesky NCP) + covariate effects on peak height, proliferation rate, clearance rate
+- **PFU trajectory:** Derived from RNA via log-affine transformation + independent PFU individual REs (4 params × N_pfu_ind=275 individuals) using **non-centered parameterization** (`z_*_pfu ~ std_normal()`, reconstructed in transformed parameters)
+- **PFU constraint:** PFU ≤ RNA enforced via `fmin(pfu_hat, rna_hat)`
+- **Symptom onset:** Discrete-time cloglog hazard: $P(Y=1) = 1 - \exp(-\exp(\eta_0 + \eta_1 \log V + \eta_2 \log R + u_i))$
+- **Observation models:** Normal(rna_hat, σ_rna) for qPCR; Normal(pfu_hat, σ_pfu) for PFU/TCID50; Bernoulli-logistic for LFD; test error mixture for RNA and PFU
+- **Prior on PFU RE SD:** half-normal(0, 0.3) — `prior_pfu_i_sd = 0.3` set in `R/data.R`
+
+---
+
+## 5. Project Structure
+
+```
+_targets.R              ← Pipeline definition (34 targets)
 R/                      ← Function definitions (auto-loaded by targets)
   utils.R               ← Utility helpers (pefun, ct_to_rna, calc_corners, etc.)
   data.R                ← Data cleaning & Stan data construction
-  model.R               ← Model fitting, predictions, prior predictive
-  diagnostics.R         ← Convergence, LOO-CV, posterior predictive checks
+  model.R               ← Model fitting, initialization (NCP), predictions
+  diagnostics.R         ← Convergence, LOO-CV, WAIC, PPC
   summaries.R           ← Parameter & data summary tables
   predictions.R         ← Posterior prediction computation & plotting
+  trajectories.R        ← ABM trajectory generation (sample_trajectories)
   plots.R               ← Prior predictive & ODE comparison plots
-  simulation.R          ← Simulation study (piecewise vs target-cell)
-stan/                   ← Active Stan models only
-  kinetics_model.stan
-  sim.stan
-  _archive/             ← Old/inactive models
-data/                   ← Datasets (read-only)
+  simulation.R          ← Parameter recovery simulation study
+stan/                   ← Active Stan models
+  kinetics_model.stan   ← Main MCMC model (~670 lines, NCP for PFU REs)
+  kinetics_model_gq.stan ← Generated quantities (log_lik, posterior predictive)
+  sim.stan              ← Simulation study model
+  _archive/             ← Old/inactive model variants
+data/                   ← Datasets (read-only, not gitignored)
   raw/                  ← Original source files
 output/                 ← Generated outputs (gitignored, reproduced by pipeline)
-  figures/
-  tables/
+  figures/              ← 19 PDF figures
+  tables/               ← 3 LaTeX tables
+  stan_csv/             ← MCMC CSV output (on remote machine)
+  stan_csv_gq/          ← GQ CSV output (on remote machine)
 doc/                    ← Manuscripts and presentations
   manuscripts/
+    main.tex            ← Primary manuscript
+    setup.tex           ← LaTeX preamble
+    supplement.tex      ← Supplementary material
+    paper1_model/       ← Empty
+    paper2_meta/        ← Partially started meta-analysis manuscript
+    paper3_application/ ← Empty
   presentations/
-_archive/               ← Old code (gitignored, preserved for reference)
+    demo.tex            ← ~90-slide presentation
+    demo.bib            ← Presentation bibliography
+_archive/               ← Old imperative code (preserved for reference)
+CLAUDE.md               ← This file
+DESIGN_NOTE_IND_CORR.md ← Design plan for correlated PFU individual REs
+DIAGNOSIS_PATHFINDER.md ← Notes on Pathfinder initialization issues
 ```
 
-Usage: `targets::tar_make()` runs the full pipeline; `targets::tar_visnetwork()` shows the DAG.
+**Usage:** `targets::tar_make()` runs the full pipeline; `targets::tar_visnetwork()` shows the DAG; `targets::tar_read(target_name)` reads cached results.
 
-### Manuscript
+---
 
-1. **Write the empty sections** (Symptoms background, Computation, Model checking, Results, Discussion).
-2. **Set up bibliography** — currently no `.bib` file is linked.
-3. **Add figure/table captions** in the supplement.
-4. **Resolve the multi-paper structure.** There are three paper folders (`paper1_model`, `paper2_meta`, `paper3_application`) but only `paper2_meta` has content, and it largely duplicates the main manuscript. Decide whether this is one paper or a series.
-5. **Update the presentation** to reflect the final model specification once reconciled.
+## 6. What Has Been Completed
 
-### Priority Roadmap (suggested)
+### Model Development
+- [x] Piecewise exponential model for RNA with covariate effects
+- [x] Log-affine RNA-to-PFU transformation (consistent across code, manuscript, presentation)
+- [x] Discrete-time cloglog symptom hazard with individual RE
+- [x] Observation models for all assay types (qPCR, PFU, TCID50, culture, LFD)
+- [x] Test error mixture model (false positives/negatives)
+- [x] Correlated RNA individual REs (4×4 Cholesky LKJ)
+- [x] PFU individual REs restricted to PFU-informed individuals (N=275)
+- [x] NCP for PFU individual effects (breaks funnel geometry)
+- [x] All source/covariate toggle flags implemented in Stan model
+- [x] Generated quantities model for log-lik and posterior predictive draws
+- [x] reduce_sum parallelism (threading)
 
-1. ~~Reconcile Stan model with manuscript theory~~ **DONE**
-2. ~~Update all post-processing code to work with the active model~~ **DONE** (refactored to `R/` functions with correct param names)
-3. ~~Implement model checking and diagnostics~~ **DONE** (`R/diagnostics.R` + `generated quantities` block)
-4. Complete results analysis (run `targets::tar_make()`)
-5. Write remaining manuscript sections
-6. ~~Clean up code documentation and organization~~ **DONE** (`targets` pipeline + roxygen headers)
-7. Evaluate toggling on extensions (source effects, covariate effects, correlated REs)
+### Infrastructure
+- [x] `targets` pipeline (34 targets, full DAG)
+- [x] Pathfinder MAP initialization with fallback
+- [x] Prior predictive checks
+- [x] Posterior predictive checks (RNA, PFU, LFD)
+- [x] LOO-CV and WAIC
+- [x] Parameter recovery simulation study
+- [x] Trace plots, correlation plots, forest plots, trajectory fits
+- [x] LaTeX table generation (Table 1, parameters, convergence)
+- [x] ABM trajectory generation (`sample_trajectories()`)
+
+### Documentation
+- [x] All R functions have roxygen-style headers
+- [x] Design note for correlated PFU REs (`DESIGN_NOTE_IND_CORR.md`)
+- [x] Pathfinder diagnosis notes (`DIAGNOSIS_PATHFINDER.md`)
+- [x] This status document
+
+---
+
+## 7. Remaining Work — Phased Implementation Plan
+
+### Phase 1: Immediate Post-Fit Tasks
+
+**Goal:** Finalize the candidate fit, fix minor gaps, prepare for sensitivity analysis.
+
+#### 1a. Investigate High Pareto-k Observations
+- 658 observations (2.7%) have Pareto k > 1, indicating influential/poorly-fit points
+- Extract and characterize these: which individuals, which data types (RNA/PFU/LFD/symptom), which time points, which cohorts
+- Determine if they represent outliers, data quality issues, or model misspecification
+- Consider moment-matching or integrated IS corrections (`loo::loo_moment_match()`)
+- **Output:** Table/plot of problematic observations; decision on whether to address in model or document as limitation
+
+#### 1b. Add `sigma_ind_pfu` to Parameter Summary
+- `R/summaries.R` `summarize_parameters()` currently only extracts RNA RE SDs, not PFU RE SDs
+- Add PFU RE SD estimates (`sigma_ind_pfu[1:4]`) to the `corr_params` output table
+- Also add PFU RE summary to `output/tables/params.tex`
+
+#### 1c. Document Data Exclusions and Calibration Decisions
+- ATACCC hardcoded exclusions (IDs 12, 18, 23, 25, 41, 56) — document rationale in `R/data.R`
+- Legacy `ct_to_rna` offset (-2) — document justification in `R/utils.R`
+- HCT `hct-cn`/`hct-ct` calibration stubs — confirm and document that raw values are already copies/ml
+- **Output:** Comments in code + a Data Notes section added to this document
+
+#### 1d. Clean Up Stale Files
+- Remove `_review_output.txt` from workspace root
+- Remove `CLAUDE_old.md` if still present
+- Verify `.gitignore` covers `output/`, `_targets/`, `_archive/`
+
+### Phase 2: Sensitivity Analysis
+
+**Goal:** Formally compare model variants via WAIC/LOO, saving each fit for reproducibility.
+
+#### 2a. Build Sensitivity Analysis Infrastructure
+- Create `R/sensitivity.R` with functions:
+  - `run_sensitivity_model(label, flag_overrides, stan_data, ...)` — fits a model variant with specified flag overrides, returns fit + diagnostics
+  - `compare_models(results_list)` — computes WAIC/LOO comparison table using `loo::loo_compare()`, returns formatted output
+  - `save_sensitivity_result(label, fit, loo, waic, convergence)` — stores results with metadata to `output/sensitivity/`
+- Add sensitivity targets to `_targets.R` (or a separate `_targets_sensitivity.R` pipeline)
+- Design decision: run as separate `targets` pipeline (to avoid invalidating the base fit) or use `tar_target_raw()` / dynamic branching
+
+#### 2b. Define Sensitivity Analysis Grid
+
+Each variant toggles one or more flags from the base model:
+
+| Label | Change from base | Flags |
+|-------|-----------------|-------|
+| `base` | Candidate fit (current) | — |
+| `source_rna` | Source REs on RNA | `source_rna = 1` |
+| `source_pfu` | Source REs on PFU | `source_pfu = 1` |
+| `source_lfd` | Source REs on LFD | `source_lfd = 1` |
+| `source_sym` | Source REs on symptoms | `source_sym = 1` |
+| `source_all` | All source REs | all source flags = 1 |
+| `adj_pfu` | Covariate effects on PFU | `adj_pfu = 1` |
+| `adj_lfd` | Covariate effects on LFD | `adj_lfd = 1` |
+| `adj_sym` | Covariate effects on symptoms | `adj_sym = 1` |
+| `adj_all` | All covariate effects | all adj flags = 1 |
+| `full` | All toggles on | all source + adj flags = 1 |
+| `no_corr` | Independent RNA REs | `ind_corr = 0` |
+| `no_smooth` | Sharp piecewise exponential | `use_smooth = 0` |
+
+#### 2c. Run and Compare
+- Run each variant (~16 hr each × 13 variants = ~9 days serial, parallelizable on cluster)
+- For each: check convergence (reject if max Rhat > 1.1 or divergences > 0)
+- GQ pass + LOO/WAIC for each converged fit
+- Compare via `loo::loo_compare()` on WAIC and PSIS-LOO elpd
+- **Output:** Model comparison table (for manuscript), elpd difference forest plot, table of convergence outcomes
+
+#### 2d. Interpret and Select Final Model
+- If any variant improves WAIC by >4 SE, consider adopting
+- If source effects are non-negligible, document heterogeneity across cohorts
+- If covariate effects on PFU/LFD/symptoms improve fit, incorporate into final model
+- Update this document with final model selection rationale
+
+### Phase 3: Manuscript Completion
+
+**Goal:** Write all remaining manuscript sections using final model results.
+
+#### 3a. Empty Sections to Write
+
+| Section | Content Needed |
+|---------|---------------|
+| **2.4 Symptoms** | Background on symptom diaries as infectiousness proxies, prior literature |
+| **5 Computation** | Stan implementation details, NCP, threading, Pathfinder init, convergence criteria, software versions |
+| **6 Model checking** | Prior/posterior predictive checks, LOO/WAIC, parameter recovery, sensitivity analysis results |
+| **7.1–7.2** | Individual-level trajectory fits, covariate effects interpretation |
+| **7.3 Population parameters** | Population-level estimates table and interpretation |
+| **7.4 Transmission models** | Application to testing/isolation policy (probability curves) |
+| **8 Discussion** | Summary of findings, limitations, comparison to prior modeling approaches, future directions |
+
+#### 3b. Supporting Manuscript Tasks
+- Set up bibliography (`.bib` file — currently commented out in `main.tex`)
+- Add figure/table captions in supplement
+- Incorporate sensitivity analysis results (Phase 2 output) as a table
+- Incorporate parameter recovery results as a figure/table
+- Cross-reference all generated figures from `output/figures/`
+- Update presentation (`doc/presentations/demo.tex`) with final results
+
+#### 3c. Resolve Multi-Paper Structure
+- `paper1_model/` — empty
+- `paper2_meta/` — partially started, content mostly duplicates main manuscript
+- `paper3_application/` — empty
+- **Decision needed:** Is this one paper or a series? If one paper, consolidate and remove empty folders. If series, define scope boundaries.
+
+### Phase 4: Extended Model Features (Optional/Future)
+
+#### 4a. Correlated PFU Individual REs
+- Full design plan in `DESIGN_NOTE_IND_CORR.md`
+- Would add 4×4 Cholesky correlation for PFU REs (mirroring RNA)
+- Only meaningful if PFU data is rich enough (N_pfu_ind=275, but each has few observations)
+- Include in sensitivity analysis grid if implemented
+
+#### 4b. K-fold Cross-Validation
+- Already scaffolded in `_targets.R` (commented out)
+- Grouped by individual (leave-one-individual-out)
+- Budget: ~K × 16 hr — likely needs cluster
+- Provides more robust model comparison than PSIS-LOO for the 2.7% of observations with high Pareto k
+- Consider as a follow-up validation of the best model from Phase 2
+
+#### 4c. Additional Applications
+- Testing/isolation policy probability curves (partially done in presentation)
+- ABM integration via `sample_trajectories()` (infrastructure exists in `R/trajectories.R`)
+- Transmission model coupling (chain binomial sketch exists in `doc/manuscripts/chain_binomial.R`)
+- Meta-analytic summary for paper 2 (`doc/manuscripts/paper2_meta/`)
+
+---
+
+## 8. Known Issues and Limitations
+
+### Data Issues
+- `hct-cn` and `hct-ct` calibration functions in `ct_to_rna()` are stubs — HCT raw values used directly (assumed already copies/ml)
+- ATACCC data joins symptom data from separate file; `sym_exist` initially 0, updated post-join — potential edge cases
+- ATACCC hardcoded exclusions (IDs 12, 18, 23, 25, 41, 56) lack documentation
+- Legacy `ct_to_rna` uses NBA calibration with -2 offset — workaround needs justification
+
+### Model Limitations
+- 2.7% of observations have Pareto k > 1 (influential points)
+- Recovery: `sigma_pfu` biased upward (+0.48); `fp` overestimated 2×; `alpha_cult_1` not identified (too few culture observations)
+- PFU RE SDs not currently in `param_summary` output
+- Source-level and extended covariate effects not yet evaluated (pending Phase 2)
+- Individual RE correlation for PFU not implemented (designed but deferred to Phase 4)
+
+### Infrastructure
+- Stan CSV files live on remote machine (`christopherboyer/Dropbox/...`); `fit$draws()` and `fit$summary()` calls fail locally — all diagnostics must use cached `targets` objects
+- Recovery fit convergence not independently verifiable locally (same CSV path issue)
+
+---
+
+## 9. Technical Reference
+
+### Running the Pipeline
+```r
+library(targets)
+tar_make()              # Run full pipeline
+tar_visnetwork()        # Visualize DAG
+tar_read(kinetics_mcmc) # Read cached fit (draws only, not CSV-dependent methods)
+tar_read(convergence)   # Convergence diagnostics
+tar_read(param_summary) # Parameter estimates
+tar_read(loo_result)    # LOO-CV
+tar_read(waic_result)   # WAIC
+tar_read(ppc)           # Posterior predictive check draws
+tar_read(predictions)   # Posterior predictions (obs + grid)
+tar_read(recovery_check) # Parameter recovery
+```
+
+### Key Parameter Name Mapping
+
+| Concept | Stan parameter | R extraction |
+|---------|---------------|--------------|
+| RNA peak (population) | `dp_mean_rna` | `param_summary$pop_params` |
+| RNA proliferation (population) | `wp_mean_rna` | `param_summary$pop_params` |
+| RNA clearance (population) | `wr_mean_rna` | `param_summary$pop_params` |
+| PFU transformation | `tau_dp[1:2]`, `tau_wp[1:2]`, `tau_wr[1:2]` | `param_summary$transformation_params` |
+| PFU individual RE (NCP z-score) | `z_tp_pfu[j]` | draws (parameter) |
+| PFU individual RE (reconstructed) | `tp_i_pfu[j]` | draws (transformed parameter) |
+| RNA individual RE (NCP z-score) | `z_ind_rna[k,i]` | draws (parameter) |
+| RNA individual RE (reconstructed) | `eff_rna_mat[k,i]` | draws (transformed parameter) |
+| RNA RE SDs | `sigma_ind_rna[1:4]` | `param_summary$corr_params` |
+| PFU RE SDs | `sigma_ind_pfu[1:4]` | *not yet in param_summary* |
+| RNA RE correlations | `Omega_rna[i,j]` | `param_summary$corr_params` |
+| Symptom model | `eta_sym_intercept`, `eta_sym_pfu`, `eta_sym_rna`, `sigma_sym` | `param_summary$symptom_params` |
+| Covariate effects | `beta_dp_rna`, `beta_wp_rna`, `beta_wr_rna` | `param_summary$covariate_effects` |
+| Observation error | `sigma_rna`, `sigma_pfu`, `fp`, `fn` | `param_summary$error_params` |
