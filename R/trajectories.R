@@ -199,7 +199,7 @@ sample_trajectories <- function(
   # Fallback for very old fits that lack sigma_ind_pfu: estimate population SDs
   # via variance decomposition over individual PFU RE posteriors.
   all_param_names <- fit$metadata()$model_params
-  has_sigma_ind_pfu <- "sigma_ind_pfu" %in% all_param_names
+  has_sigma_ind_pfu <- any(grepl("^sigma_ind_pfu", all_param_names))
 
   if (has_sigma_ind_pfu) {
     vars <- c(vars, "sigma_ind_pfu")
@@ -233,6 +233,7 @@ sample_trajectories <- function(
     # Fallback: estimate population SDs of PFU individual effects via
     # variance decomposition (needed for fits from before sigma_ind_pfu
     # was an estimated parameter).
+    pfu_informed <- which(stan_data$pfu_ind_idx > 0)
     N_ind <- sum(stan_data$M)
     message(sprintf("  Using %d PFU-informed individuals (of %d total) for variance decomposition",
                     length(pfu_informed), N_ind))
