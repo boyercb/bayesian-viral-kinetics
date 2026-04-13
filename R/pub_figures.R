@@ -9,49 +9,11 @@
 # Output: output/figures/{style}/fig{N}_{name}.{pdf,png}
 # ──────────────────────────────────────────────────────────────────────────────
 
-library(targets)
-library(tidyverse)
-library(patchwork)
-
-# Load project functions (exclude this file to avoid recursion)
-r_files <- list.files("R", full.names = TRUE, pattern = "\\.R$")
-r_files <- r_files[!grepl("pub_figures\\.R$", r_files)]
-invisible(lapply(r_files, source))
-
-# ── Parse command-line style argument ─────────────────────────────────────────
-args <- commandArgs(trailingOnly = TRUE)
-run_style <- if (length(args) > 0) args[1] else "all"
-
-if (run_style == "all") {
-  styles <- c("pnas", "plos", "annals")
-} else {
-  styles <- match.arg(run_style, c("pnas", "plos", "annals"))
-}
-
-# ── Load cached targets ──────────────────────────────────────────────────────
-message("Loading targets cache...")
-safe_tar_read <- function(name) {
-  tryCatch(
-    tar_read_raw(name),
-    error = function(e) {
-      message("  tar_read failed for '", name, "', reading directly with qs2...")
-      qs2::qs_read(file.path("_targets", "objects", name))
-    }
-  )
-}
-predictions   <- safe_tar_read("predictions")
-param_summary <- safe_tar_read("param_summary")
-stan_data     <- safe_tar_read("stan_data")
-stacked_dat   <- safe_tar_read("stacked_dat")
-
-# Try loading the fit (may fail if CSVs are remote)
-fit <- tryCatch(tar_read(kinetics_mcmc), error = function(e) NULL)
-
+# ── Constants used by figure functions ────────────────────────────────────────
 source_names <- c("1" = "NBA", "2" = "ATACCC", "3" = "UIUC",
                    "4" = "HCT", "5" = "Legacy")
 
-# ── Flatten 1-column matrix columns in obs ────────────────────────────────
-# predictions$obs may have rna_hat, pfu_hat, etc. as 1-col matrices (from posterior)
+# ── Helper: flatten 1-column matrix columns ──────────────────────────────────
 flatten_mat_cols <- function(df) {
   for (col in names(df)) {
     if (is.matrix(df[[col]]) && ncol(df[[col]]) == 1) {
@@ -60,7 +22,17 @@ flatten_mat_cols <- function(df) {
   }
   df
 }
-predictions$obs <- flatten_mat_cols(predictions$obs)
+
+# ── Helper: safe tar_read with qs2 fallback ──────────────────────────────────
+safe_tar_read <- function(name) {
+  tryCatch(
+    targets::tar_read_raw(name),
+    error = function(e) {
+      message("  tar_read failed for '", name, "', reading directly with qs2...")
+      qs2::qs_read(file.path("_targets", "objects", name))
+    }
+  )
+}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -591,6 +563,43 @@ fig_inferred_pfu <- function(predictions, stan_data, style = "pnas",
 #             each of 200 posterior draws.
 # ══════════════════════════════════════════════════════════════════════════════
 
+#' Extract thinned population parameter draws for trajectory plotting
+#'
+#' Pulls the subset of posterior draws needed by .trajectory_from_params and
+#' .trajectory_with_re, thins to n_draws, and returns as a data.frame.
+#'
+#' @param fit      CmdStanMCMC fit object (must have accessible CSV output)
+#' @param n_draws  Number of draws to retain (evenly thinned)
+#' @param out_path If non-NULL, save as RDS to this path
+#' @return data.frame with one row per draw, columns = population params
+extract_pop_draws <- function(fit, n_draws = 200, out_path = NULL) {
+  pop_vars <- c(
+    "dp_mean_rna", "wp_mean_rna", "wr_mean_rna",
+    paste0("tau_tp[", 1:2, "]"), paste0("tau_dp[", 1:2, "]"),
+    paste0("tau_wp[", 1:2, "]"), paste0("tau_wr[", 1:2, "]"),
+    "tau0_lfd", paste0("tau_lfd[", 1:4, "]"),
+    "zeta_sym_intercept", "zeta_sym_pfu", "zeta_sym_rna",
+    "zeta_sym_postpeak", "zeta_sym_postpeak_rna",
+    "sigma_sym",
+    paste0("sigma_ind_rna[", 1:4, "]"),
+    paste0("sigma_ind_pfu[", 1:4, "]"),
+    paste0("L_Omega_rna[", rep(1:4, each = 4), ",", rep(1:4, 4), "]")
+  )
+  drws <- posterior::as_draws_matrix(fit$draws(variables = pop_vars))
+  n_total <- nrow(drws)
+  if (n_total > n_draws) {
+    idx <- round(seq(1, n_total, length.out = n_draws))
+    drws <- drws[idx, ]
+  }
+  df <- as.data.frame(drws)
+  if (!is.null(out_path)) {
+    dir.create(dirname(out_path), showWarnings = FALSE, recursive = TRUE)
+    saveRDS(df, out_path)
+    message(sprintf("Saved %d population draws to %s", nrow(df), out_path))
+  }
+  df
+}
+
 #' Compute a single latent trajectory + probabilities from a parameter vector
 #'
 #' @param pars  Named numeric — population params for one posterior draw
@@ -707,12 +716,14 @@ fig_inferred_pfu <- function(predictions, stan_data, style = "pnas",
 #'          posterior predictive (new individual REs per draw).
 #'
 #' @param stan_data    Stan data list (for scale_vl and LODs)
-#' @param draws_path   Path to cached posterior draws RDS
+#' @param draws_path   Path to cached posterior draws RDS (used if draws_df is NULL)
+#' @param draws_df     Optional data.frame of population draws (overrides draws_path)
 #' @param style        Journal style
 #' @param n_spaghetti  Number of spaghetti trajectories
 #' @return ggplot (patchwork composite)
 fig_population_trajectories <- function(stan_data,
                                          draws_path = "output/pop_draws_200.rds",
+                                         draws_df = NULL,
                                          style = "pnas",
                                          n_spaghetti = 200) {
 
@@ -721,7 +732,7 @@ fig_population_trajectories <- function(stan_data,
   lod_rna <- min(stan_data$lod_rna, na.rm = TRUE)
   lod_pfu <- min(stan_data$lod_pfu[stan_data$lod_pfu > 0], na.rm = TRUE)
 
-  draws_df <- readRDS(draws_path)
+  if (is.null(draws_df)) draws_df <- readRDS(draws_path)
   t_grid <- seq(-12, 22, by = 0.25)
   clamp <- function(x, lod) pmax(x, lod)
 
@@ -1256,8 +1267,42 @@ fig_correlation_matrix <- function(param_summary, style = "pnas") {
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# GENERATE ALL FIGURES
+# SCRIPT EXECUTION — only when run directly (Rscript R/pub_figures.R [style])
+# Guarded so tar_source("R/") does not trigger figure generation at load time.
 # ══════════════════════════════════════════════════════════════════════════════
+
+if (sys.nframe() == 0L) {
+
+library(targets)
+library(tidyverse)
+library(patchwork)
+
+# Load project functions (exclude this file to avoid recursion)
+r_files <- list.files("R", full.names = TRUE, pattern = "\\.R$")
+r_files <- r_files[!grepl("pub_figures\\.R$", r_files)]
+invisible(lapply(r_files, source))
+
+# ── Parse command-line style argument ─────────────────────────────────────────
+args <- commandArgs(trailingOnly = TRUE)
+run_style <- if (length(args) > 0) args[1] else "all"
+
+if (run_style == "all") {
+  styles <- c("pnas", "plos", "annals")
+} else {
+  styles <- match.arg(run_style, c("pnas", "plos", "annals"))
+}
+
+# ── Load cached targets ──────────────────────────────────────────────────────
+message("Loading targets cache...")
+predictions   <- safe_tar_read("predictions")
+param_summary <- safe_tar_read("param_summary")
+stan_data     <- safe_tar_read("stan_data")
+stacked_dat   <- safe_tar_read("stacked_dat")
+
+# Try loading the fit (may fail if CSVs are remote)
+fit <- tryCatch(targets::tar_read(kinetics_mcmc), error = function(e) NULL)
+
+predictions$obs <- flatten_mat_cols(predictions$obs)
 
 for (s in styles) {
   message(sprintf("\n=== Generating figures for style: %s ===", s))
@@ -1297,3 +1342,5 @@ for (s in styles) {
 }
 
 message("\nAll figures generated successfully.")
+
+}  # end if (sys.nframe() == 0L)

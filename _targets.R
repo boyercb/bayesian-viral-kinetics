@@ -210,6 +210,11 @@ list(
     kinetics_mcmc, pred_dat, stan_data
   )),
   tar_target(
+    pop_draws,
+    extract_pop_draws(kinetics_mcmc, n_draws = 200,
+                      out_path = "output/pop_draws_200.rds")
+  ),
+  tar_target(
     fig_trajectories,
     plot_all_trajectories(predictions, stan_data),
     format = "file"
