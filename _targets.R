@@ -196,6 +196,11 @@ list(
     save_table(param_summary, "output/tables/params.tex"),
     format = "file"
   ),
+  tar_target(
+    tex_supplement,
+    save_supplement_tables(param_summary, "output/tables"),
+    format = "file"
+  ),
 
 
   # ── Predictions & trajectory plots ──────────────────────────────────────────
@@ -207,6 +212,51 @@ list(
   tar_target(
     fig_trajectories,
     plot_all_trajectories(predictions, stan_data),
+    format = "file"
+  ),
+  tar_target(
+    fig_inferred_pfu,
+    plot_inferred_pfu(predictions, stan_data),
+    format = "file"
+  ),
+
+
+  # ── Policy analysis ────────────────────────────────────────────────────────
+  #
+  #  Generates trajectories for hypothetical agents under representative
+
+  #  covariate profiles, aligns to clinically meaningful landmarks (first
+  #  positive PCR, symptom onset, first positive LFD), and computes derived
+  #  policy quantities: probability curves, conditional infectiousness,
+  #  isolation duration tables, residual infectiousness AUC, and
+  #  test-to-release false reassurance rates.
+
+  tar_target(
+    policy_results,
+    compute_all_policy(kinetics_mcmc, stan_data,
+                       n_draws = 200, n_reps = 50, seed = 2026)
+  ),
+  tar_target(
+    fig_policy,
+    generate_policy_figures(policy_results),
+    format = "file"
+  ),
+
+  # ── Bayesian filtering (personalized infectiousness given test history) ─────
+  #
+  #  Generates latent trajectories from the population prior, then uses
+  #  importance sampling to condition on hypothetical test histories (PCR Ct
+  #  values and serial LFD results).  Produces Figure 9 showing how
+  #  P(culture positive) updates with diagnostic information.
+
+  tar_target(
+    filter_results,
+    compute_bayesian_filtering(kinetics_mcmc, stan_data,
+                               n_draws = 200, n_reps = 500, seed = 2026)
+  ),
+  tar_target(
+    fig_filter,
+    generate_filtering_figures(filter_results),
     format = "file"
   ),
 

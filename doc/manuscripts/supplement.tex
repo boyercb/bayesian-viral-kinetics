@@ -1,181 +1,494 @@
+% ============================================================================
+% SUPPLEMENT CONFIGURATION
+% ============================================================================
+% Change the prefix to adapt to journal requirements:
+%   "A" for Appendix (default), "S" for Supplement, "SI" for Supporting Info
+\newcommand{\suppprefix}{S}
+% Figure path: change to point to journal-specific directory when using
+% save_journal_figure() output (e.g., "../../output/figures/pnas")
+\newcommand{\suppfigpath}{../../output/figures}
+% Page numbering: set to 0 to restart, or comment out to continue from main text
+\setcounter{page}{0}
 
 \begin{appendix}
 
-    \renewcommand{\thefigure}{A\arabic{figure}}
+    \renewcommand{\thefigure}{\suppprefix\arabic{figure}}
     \setcounter{figure}{0}
-    
-    \renewcommand{\thetable}{A\arabic{table}}
+
+    \renewcommand{\thetable}{\suppprefix\arabic{table}}
     \setcounter{table}{0}
-    
-    \renewcommand{\theequation}{A\arabic{equation}}
+
+    \renewcommand{\theequation}{\suppprefix\arabic{equation}}
     \setcounter{equation}{0}
 
-%    \appendixwithtoc
+    \renewcommand{\thesection}{\suppprefix\arabic{section}}
+    \setcounter{section}{0}
+
+    % -------------------------------------------------------------------
+    % Title page
+    % -------------------------------------------------------------------
     \newpage
+    \begin{center}
+        {\Large \textbf{Supplementary Materials}} \\[0.5em]
+        {\large Inferring infectiousness: a joint model of the within-host viral kinetics of SARS-CoV-2} \\[0.5em]
+        %Christopher Boyer and Marc Lipsitch \\[1em]
+        \today
+    \end{center}
+    \vspace{1em}
+
+    \noindent This supplement contains prior predictive checks (Section~\ref{sec:supp_prior}), a comparison of the semi-mechanistic trajectory model to the target cell limited ODE (Section~\ref{sec:supp_tcl}), a description of the flat-top trajectory extension (Section~\ref{sec:supp_flattop}), convergence diagnostics (Section~\ref{sec:supp_convergence}), individual-level trajectory fits for each cohort (Section~\ref{sec:supp_fits}), posterior predictive checks (Section~\ref{sec:supp_ppc}), the parameter recovery simulation study (Section~\ref{sec:supp_recovery}), additional parameter estimates including covariate effects, the RNA-to-PFU transformation, and the individual random effect correlation structure (Section~\ref{sec:supp_params}), and covariate-stratified probability curves for testing and isolation policy (Section~\ref{sec:supp_strat}).
+
+    % ===================================================================
+    % SECTION 1: PRIOR PREDICTIVE CHECKS
+    % ===================================================================
+    \section{Prior predictive checks} \label{sec:supp_prior}
+
+    Figures~\ref{fig:prior_pe}--\ref{fig:prior_sym} display draws from the joint prior distribution of model parameters before conditioning on data, illustrating the range of trajectories and derived quantities consistent with the prior specification described in Section~\ref{sec:priors} of the main text.
 
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{../3_figures/prior_pe.pdf}
-        \caption{}
+        \includegraphics[width=\linewidth]{\suppfigpath/prior_pe.pdf}
+        \caption[Prior predictive: RNA trajectory parameters]{Prior predictive check for the piecewise exponential trajectory parameters. Each panel shows 500 draws from the marginal prior distribution of a single kinetic parameter (peak height $\delta$, proliferation duration $\omega_p$, clearance duration $\omega_r$, peak timing $t_p$), illustrating the range of values admitted by the prior before observing data. Gray shading indicates the approximate range observed in the literature.}
+        \label{fig:prior_pe}
     \end{figure}
-    
+
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{../3_figures/prior_trans_times.pdf}
-        \caption{}
+        \includegraphics[width=\linewidth]{\suppfigpath/prior_trans_pe.pdf}
+        \caption[Prior predictive: RNA-to-PFU transformation]{Prior predictive check for the log-affine RNA-to-PFU transformation parameters. Each panel shows draws from the joint prior of the intercept ($a_0$) and elasticity ($a_1$) parameters linking infectious virus trajectory parameters to viral RNA trajectory parameters. The elasticity prior is centered at 1 (proportional scaling) with positivity enforced by truncation.}
+        \label{fig:prior_trans}
     \end{figure}
-    
+
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{../3_figures/prior_trajectories.pdf}
-        \caption{}
+        \includegraphics[width=\linewidth]{\suppfigpath/prior_trajectories.pdf}
+        \caption[Prior predictive: trajectory draws]{Prior predictive trajectories. Two-dimensional kernel density estimate of simulated viral trajectories drawn from the joint prior distribution of all kinetic parameters, including population-level parameters, individual random effects, and the log-affine RNA-to-PFU transformation. Left panel: viral RNA; right panel: infectious virus (PFU). The y-axis is constrained to 0--25 log copies/mL to match the observed data range. The density illustrates the range and concentration of kinetic profiles implied by the prior before conditioning on data.}
+        \label{fig:prior_traj}
     \end{figure}
-    
+
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{../3_figures/trace_plots.pdf}
-        \caption{}
+        \includegraphics[width=\linewidth]{\suppfigpath/prior_sym.pdf}
+        \caption[Prior predictive: symptom onset model]{Prior predictive check for the discrete-time cloglog symptom onset model. Prior draws of the daily hazard of symptom onset as a function of days since infection, illustrating the range of onset timing and cumulative incidence curves consistent with the prior specification. The prior intercept is centered at $\zeta_0 = -3$ (corresponding to a ${\sim}5\%$ baseline daily hazard), with positive viral load effects $\zeta_1, \zeta_2 \sim N^+(0, 0.5)$ and post-peak indicator coefficients $\zeta_3, \zeta_4 \sim N(0, 1)$.}
+        \label{fig:prior_sym}
     \end{figure}
+
+    % ===================================================================
+    % SECTION 2: TARGET CELL LIMITED MODEL COMPARISON
+    % ===================================================================
+    \section{Comparison with target cell limited model} \label{sec:supp_tcl}
+
+    The semi-mechanistic piecewise exponential trajectory model (Section~3 of the main text) is motivated by the phenomenological similarity between its trajectory shape and the numerical solution of the target cell limited (TCL) ODE. Figures~\ref{fig:tcl_1}--\ref{fig:tcl_2} illustrate this correspondence by overlaying a least-squares--fitted smooth piecewise exponential approximation (Equation~3 of the main text) on the ODE solution for two model configurations, demonstrating that the semi-mechanistic model captures the salient features---exponential growth, peak, and exponential decline---while directly parameterizing the quantities of clinical interest.
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/tcl_example_1.pdf}
+        \caption[TCL comparison: standard model]{Comparison between the standard target cell limited ODE solution (solid blue line; $\beta = 2.4 \times 10^{-5}$, $\delta = 2.0$, $\pi = 1700$, $c = 10$, $T_0 = 4 \times 10^8$, $V_0 = 0.4$) and a smooth piecewise exponential approximation fitted by least squares (dashed red line). The piecewise model closely tracks the exponential proliferation and clearance phases; the main discrepancy is a slight geometric mismatch near the rounded ODE peak versus the smooth log-sum-exp cap of the piecewise model.}
+        \label{fig:tcl_1}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/tcl_example_2.pdf}
+        \caption[TCL comparison: refractory compartment]{As Figure~\ref{fig:tcl_1}, but for an extended TCL model that includes a refractory cell compartment ($\phi = 1$, $\rho = 0.5$; all other parameters identical). The innate immune response modeled by the refractory state produces a blunted, asymmetric trajectory with a faster initial decline followed by a prolonged tail. The piecewise exponential approximation captures the dominant features of this more complex ODE solution, supporting its use as a tractable reduced-form model even when the underlying biology includes additional compartments.}
+        \label{fig:tcl_2}
+    \end{figure}
+
+    % ===================================================================
+    % SECTION 3: FLAT-TOP TRAJECTORY EXTENSION
+    % ===================================================================
+    \section{Flat-top trajectory extension} \label{sec:supp_flattop}
+
+    The smooth trajectory function used in the main text (Section~3.1) assumes that the viral load profile transitions immediately from proliferation to clearance at the peak. In reality, some individuals may exhibit an approximate plateau near peak viral load, during which infectious virus production and immune-mediated clearance are roughly balanced. To accommodate this possibility, we consider a generalized smooth trajectory that introduces a \emph{flat-top duration} parameter $\omega_f \geq 0$:
+    \begin{equation}
+        g_s(t; \theta) = \delta + \log \frac{a + b}{b \exp(-a(t - t_p)) + a \exp(b(t - (t_p + \omega_f)))} \label{eq:flattop}
+    \end{equation}
+    where $a = \delta / \omega_p$ and $b = \delta / \omega_r$ are the proliferation and clearance rates, as in the main text. When $\omega_f = 0$, this reduces to the standard smooth two-arm envelope used in our primary analysis. For $\omega_f > 0$, the rising and falling exponential arms are separated by $\omega_f$ days, producing an approximate plateau of width $\omega_f$ around the peak.
+
+    However, when $\omega_f > 0$, the log-sum-exp envelope can overshoot the peak value $\delta$---an inherent artifact of merging two separated exponential arms. To prevent this, we apply a soft cap:
+    \begin{equation}
+        \tilde{g}_s(t; \theta) = g_s(t; \theta) - \frac{1}{\kappa}\log\!\left(1 + \exp\!\left(\kappa \left(g_s(t; \theta) - \delta\right)\right)\right) \label{eq:softcap}
+    \end{equation}
+    where $\kappa = 10$ controls the sharpness of the cap. This ensures $\tilde{g}_s \leq \delta$ everywhere while maintaining smooth gradients.
+
+    When the flat-top extension is used, $\omega_f$ is shared between the RNA and PFU trajectories, and the parameter vector becomes $\theta = (\delta, \omega_p, \omega_r, t_p, \omega_f)$ for RNA and $\theta' = (\delta', \omega'_p, \omega'_r, t'_p, \omega_f)$ for PFU. Individual and source-level effects on $\omega_f$ are modeled independently (not included in the correlated random effect block) to keep the dimensionality of the Cholesky factor manageable.
+
+    \paragraph{Model comparison.} Our implementation includes a compile-time toggle (\texttt{use\_wf}) that enables or disables the flat-top extension. In preliminary fits with $\omega_f$ enabled, the posterior for $\omega_f$ concentrated near zero, indicating that the data do not support a plateau phase beyond what is already captured by the smooth peak geometry. Formally, the model with $\omega_f = 0$ (the specification used in the main text) was preferred on the basis of WAIC, and the remaining parameter estimates were substantively unchanged. We therefore use the simpler specification without the flat-top parameter throughout the main analysis.
+
+    % ===================================================================
+    % SECTION 4: CONVERGENCE DIAGNOSTICS
+    % ===================================================================
+    \section{Convergence diagnostics} \label{sec:supp_convergence}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/trace_plots.pdf}
+        \caption[MCMC trace plots]{MCMC trace plots for key population-level parameters across all four chains. Each panel shows the sampled values for one parameter as a function of iteration number, with chains distinguished by color. All parameters show good mixing with no visible trends, multimodality, or stuck chains, consistent with the split-$\hat{R}$ values reported in Section~\ref{sec:model_checking} of the main text.}
+        \label{fig:trace}
+    \end{figure}
+
+    % ===================================================================
+    % SECTION 5: INDIVIDUAL TRAJECTORY FITS
+    % ===================================================================
+    \section{Individual trajectory fits} \label{sec:supp_fits}
+
+    Figures~\ref{fig:fit_ataccc}--\ref{fig:fit_legacy} show individual-level trajectory fits for all participants in each of the five cohorts. For each individual, the posterior median viral RNA trajectory (blue line) with 95\% credible interval (blue ribbon) is overlaid on observed qPCR-derived log RNA concentrations (blue points). Where available, the posterior median infectious virus (PFU) trajectory (red line) with 95\% credible interval (red ribbon) is shown with observed culture-based measurements (red points). Predicted lateral flow device (LFD) positivity probabilities are displayed as shaded tiles (green = positive, gray = negative), and observed symptom onset is indicated by markers. The limit of detection for each assay is shown as a horizontal dashed line.
 
     \begin{landscape}
         \begin{figure}[p]
             \centering
-            \includegraphics[width=\linewidth]{../3_figures/ataccc_fit.pdf}
-            \caption{}
+            \includegraphics[width=\linewidth]{\suppfigpath/ataccc_fit.pdf}
+            \caption[ATACCC individual fits]{Individual trajectory fits for all 57 ATACCC participants. This cohort provides the most complete multi-modal data, with paired qPCR, viral culture, LFD, and symptom diary observations at each time point, enabling direct comparison of all four observation models within each individual.}
+            \label{fig:fit_ataccc}
         \end{figure}
-        
+
         \begin{figure}[p]
             \centering
-            \includegraphics[width=\linewidth]{../3_figures/nba_fit.pdf}
-            \caption{}
+            \includegraphics[width=\linewidth]{\suppfigpath/nba_fit.pdf}
+            \caption[NBA individual fits]{Individual trajectory fits for selected NBA participants. This cohort contributes only qPCR data; the infectious virus trajectory (red) is inferred entirely through the hierarchical RNA-to-PFU transformation and the population prior on PFU kinetics, illustrating the model's ability to impute unobserved infectious virus dynamics from RNA data alone.}
+            \label{fig:fit_nba}
         \end{figure}
-    
+
         \begin{figure}[p]
             \centering
-            \includegraphics[width=\linewidth]{../3_figures/uiuc_fit.pdf}
-            \caption{}
+            \includegraphics[width=\linewidth]{\suppfigpath/uiuc_fit.pdf}
+            \caption[UIUC individual fits]{Individual trajectory fits for all 60 UIUC participants. Like ATACCC, this cohort has multi-modal data (qPCR, TCID$_{50}$ culture, LFD, symptoms), with the TCID$_{50}$ culture results modeled via the mechanistic interval-censored normal observation model described in Section~3.4 of the main text.}
+            \label{fig:fit_uiuc}
         \end{figure}
-    
+
         \begin{figure}[p]
             \centering
-            \includegraphics[width=\linewidth]{../3_figures/hic_fit.pdf}
-            \caption{}
+            \includegraphics[width=\linewidth]{\suppfigpath/hct_fit.pdf}
+            \caption[HCT individual fits]{Individual trajectory fits for all 18 Human Challenge Trial participants. The known inoculation time ($t=0$) provides a fixed reference point absent in observational cohorts, enabling precise estimation of the proliferation phase duration and timing. PFU and FFA culture measurements are available for all time points.}
+            \label{fig:fit_hct}
+        \end{figure}
+
+        \begin{figure}[p]
+            \centering
+            \includegraphics[width=\linewidth]{\suppfigpath/legacy_fit.pdf}
+            \caption[Legacy individual fits]{Individual trajectory fits for all 157 Crick Legacy participants. This cohort contributes qPCR and symptom onset data but no viral culture or LFD results. The model uses the joint structure and hierarchical prior to impute the infectious virus trajectory from RNA data and the estimated population-level RNA-to-PFU transformation. All participants are vaccinated (2 or 3 doses), and infections span the Delta and Omicron waves.}
+            \label{fig:fit_legacy}
         \end{figure}
     \end{landscape}
-    
 
-    \begin{table}[p]
+    % ===================================================================
+    % SECTION 6: POSTERIOR PREDICTIVE CHECKS
+    % ===================================================================
+    \section{Posterior predictive checks} \label{sec:supp_ppc}
+
+    Figures~\ref{fig:ppc_rna}--\ref{fig:ppc_sym} display posterior predictive checks comparing simulated replicated data from the fitted model to the observed data across all four assay types, both in aggregate and stratified by cohort. Replicated datasets are generated by drawing from the posterior predictive distribution at each observed time point for each individual.
+
+    \begin{figure}[p]
         \centering
-        \caption{Posterior estimates of peak value.}
-        \begin{tabular}{lccc}
-        \toprule
-         & \multicolumn{2}{c}{Peak value} \\
-        Characteristic & $\exp(\beta)$ & 95\% CrI\\
-        \midrule
-         Age: [30,50) & 1.01 & (0.99, 1.02)\\
-         Age: [50,100) & 1.00 & (0.98, 1.02)\\
-         Recurrence & 0.95 & (0.92, 0.97)\\
-         Variant: Alpha & 1.02 & (0.98, 1.06)\\
-         Variant: Delta & 1.17 & (1.13, 1.21)\\
-         Variant: Omicron & 1.05 & (1.02, 1.08)\\
-         Variant: BA.4/BA.5 & 1.15 & (1.10, 1.21)\\
-         Variant: other & 0.98 & (0.95, 1.02)\\
-         History: Vaccinated boosted & 0.84 & (0.81, 0.87)\\
-         History: Vaccinated unboosted & 0.86 & (0.83, 0.89)\\
-         History: Vaccinated unreported & 0.83 & (0.80, 0.87)\\
-         History: Unreported & 0.86 & (0.82, 0.91)\\
-         History: Boosted unreported primary & 0.88 & (0.85, 0.90)\\
-         \midrule
-         Reference value, log [RNA] per ml & 17.22 & (16.81, 17.65)\\
-         \bottomrule
-        \end{tabular}
-    \end{table}
-    \begin{table}[p]
-        \caption{Posterior estimates of proliferation phase duration.}
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_rna.pdf}
+        \caption[PPC: viral RNA]{Posterior predictive check for viral RNA (qPCR) observations. The distribution of observed log RNA concentrations (black density curve) is compared to 100 replicated datasets drawn from the posterior predictive distribution (coloured density curves). Agreement between observed and replicated distributions indicates adequate model fit for the RNA observation model.}
+        \label{fig:ppc_rna}
+    \end{figure}
+
+    \begin{figure}[p]
         \centering
-        \begin{tabular}{lcc}
-         \toprule
-         & \multicolumn{2}{c}{Proliferation duration } \\
-         Characteristic & $\exp(\beta)$ & 95\% CrI\\
-         \midrule
-         Age: [30,50) & 0.97 & (0.91, 1.04)\\
-         Age: [50,100) & 1.08 & (0.99, 1.19)\\
-         Recurrence & 0.86 & (0.77, 0.95)\\
-         Variant: Alpha & 0.79 & (0.68, 0.91)\\
-         Variant: Delta & 0.66 & (0.57, 0.75)\\
-         Variant: Omicron & 0.93 & (0.82, 1.04)\\
-         Variant: BA.4/BA.5 & 0.87 & (0.68, 1.14)\\
-         Variant: other & 1.11 & (0.97, 1.26)\\
-         History: Vaccinated boosted & 1.44 & (1.27, 1.64)\\
-         History: Vaccinated unboosted & 1.17 & (1.02, 1.35)\\
-         History: Vaccinated unreported & 1.22 & (1.03, 1.45)\\
-         History: Unreported & 1.14 & (0.94, 1.39)\\
-         History: Boosted unreported primary & 1.32 & (1.17, 1.50)\\
-         \midrule
-         Reference value, days & 7.29 & (6.61, 8.04)\\
-         Reference value (lod), days & 4.67 & (4.23, 5.15)\\
-         \bottomrule
-         \end{tabular}
-   \end{table}
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_rna_cohort.pdf}
+        \caption[PPC: viral RNA by cohort]{Posterior predictive check for viral RNA, stratified by cohort. Each panel shows the observed versus replicated RNA distribution for a single cohort. The model captures differences in the marginal RNA distributions across cohorts, including the broader distribution in the NBA cohort (which has the most individuals) and the more concentrated distributions in the smaller cohorts.}
+        \label{fig:ppc_rna_cohort}
+    \end{figure}
 
- \begin{table}[p]
-    \centering
-    \caption{Posterior estimates of clearance phase duration.}
-    \begin{tabular}{lcc}
-     \toprule
-     & \multicolumn{2}{c}{Clearance duration} \\
-     Characteristic & $\exp(\beta)$ & 95\% CrI\\
-     \midrule
-     Age: [30,50) & 1.04 & (1.01, 1.08)\\
-     Age: [50,100) & 1.19 & (1.13, 1.26)\\
-     Recurrence & 0.74 & (0.70, 0.79)\\
-     Variant: Alpha & 0.95 & (0.87, 1.04)\\
-     Variant: Delta & 0.92 & (0.85, 1.00)\\
-     Variant: Omicron & 0.90 & (0.84, 0.96)\\
-     Variant: BA.4/BA.5 & 0.87 & (0.78, 0.97)\\
-     Variant: other & 1.02 & (0.94, 1.10)\\
-     History: Vaccinated boosted & 0.86 & (0.80, 0.93)\\
-     History: Vaccinated unboosted & 0.74 & (0.68, 0.81)\\
-     History: Vaccinated unreported & 0.79 & (0.72, 0.87)\\
-     History: Unreported & 0.98 & (0.88, 1.10)\\
-     History: Boosted unreported primary & 0.87 & (0.81, 0.93)\\
-     \midrule
-     Reference value, days & 14.55 & (13.69, 15.44)\\
-     Reference value (lod), days & 9.31 & (7.96, 8.71)\\
-     \bottomrule
-     \end{tabular}
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_pfu.pdf}
+        \caption[PPC: infectious virus]{Posterior predictive check for infectious virus (PFU/TCID$_{50}$/FFA) observations. The observed distribution of log$_{10}$ PFU/mL values is shown as a black density curve, overlaid with density curves from 100 replicated datasets drawn from the posterior predictive distribution. Close overlap between the observed and replicated densities indicates that the PFU observation model adequately captures the location, spread, and shape of the culture-based measurements.}
+        \label{fig:ppc_pfu}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_pfu_cohort.pdf}
+        \caption[PPC: infectious virus by cohort]{Posterior predictive check for infectious virus, stratified by cohort. Panels show results for the three cohorts with culture data (ATACCC, UIUC, HCT). The model accommodates differences in PFU distributions across cohorts arising from different culture assay types (viral culture, TCID$_{50}$, PFU/FFA).}
+        \label{fig:ppc_pfu_cohort}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_lfd_calibration.pdf}
+        \caption[PPC: LFD calibration]{Calibration plot for the lateral flow device (LFD) observation model. Predicted LFD positivity probabilities are binned into deciles; within each bin, the observed LFD-positive frequency ($y$-axis) is plotted against the mean predicted probability ($x$-axis), with 95\% binomial confidence intervals (vertical bars) and the number of observations per bin labeled above each point. The dashed diagonal line represents perfect calibration. Points falling near the diagonal indicate that the logistic LFD model is well calibrated across the full range of predicted positivity.}
+        \label{fig:ppc_lfd}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_lfd_calibration_cohort.pdf}
+        \caption[PPC: LFD calibration by cohort]{Calibration plot for the LFD observation model, stratified by cohort. Panels show results for the three cohorts with LFD data (ATACCC, UIUC, HCT). Calibration is maintained across cohorts despite differences in sampling frequency and LFD assay conditions.}
+        \label{fig:ppc_lfd_cohort}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_lfd_calibration_phase.pdf}
+        \caption[PPC: LFD calibration by infection phase]{Calibration plot for the LFD observation model, stratified by infection phase (pre-peak versus post-peak viral RNA). Pre-peak observations (time $\leq 0$ relative to observed RNA peak) show lower observed LFD positivity than predicted at comparable predicted probability levels, consistent with the lag between viral replication and antigen accumulation to the LFD detection threshold reported by~\cite{hakki2022onset}. Post-peak observations are well calibrated along the diagonal. This asymmetry reflects a biologically expected feature: during viral proliferation, RNA levels rise faster than antigen protein concentrations, leading to lower LFD sensitivity for a given predicted positivity level than during the clearance phase.}
+        \label{fig:ppc_lfd_phase}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_sym.pdf}
+        \caption[PPC: symptom onset]{Posterior predictive check for symptom onset. The observed Kaplan--Meier cumulative incidence curve of symptom onset (black step function) is compared to cumulative incidence curves from 200 replicated datasets drawn from the posterior predictive distribution of the discrete-time complementary log-log hazard model (coloured lines, with 95\% pointwise credible band shaded). For each replicated dataset, symptom onset is simulated by drawing Bernoulli outcomes at each at-risk day using the posterior predictive hazard probability. Agreement between the observed and replicated cumulative incidence indicates that the symptom onset model adequately captures the timing and proportion of symptomatic infections.}
+        \label{fig:ppc_sym}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/ppc_sym_cohort.pdf}
+        \caption[PPC: symptom onset by cohort]{Posterior predictive check for symptom onset, stratified by cohort. Panels show cumulative incidence of symptom onset for the four cohorts with symptom data (ATACCC, UIUC, HCT, Legacy). Per-cohort agreement between observed and replicated cumulative incidence curves indicates that the symptom model captures cohort-level differences in symptom onset timing and overall symptomatic fraction.}
+        \label{fig:ppc_sym_cohort}
+    \end{figure}
+
+    % ===================================================================
+    % SECTION 7: PARAMETER RECOVERY
+    % ===================================================================
+    \section{Parameter recovery} \label{sec:supp_recovery}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/param_recovery.pdf}
+        \caption[Parameter recovery]{Parameter recovery from simulated data. A synthetic dataset was generated from the model's prior predictive distribution using a 50\% random subsample of the observed covariate and missingness structure, and the model was refit to the simulated data. For each of 34 assessed parameters, the true generating value (horizontal line) is compared to the posterior 95\% credible interval from the recovery fit (vertical bar with point at the median). Covered parameters (true value within the 95\% CrI) are shown in blue; non-covered parameters are shown in red. Overall coverage is 76.5\% (26/34). Non-covered parameters ($\sigma_{\text{pfu}}$, $\hat\lambda_{\text{fp}}$, $\hat\lambda_{\text{fn}}$, $\alpha_{\text{cult},1}$, and three others) are discussed in Section~\ref{sec:model_checking} of the main text.}
+        \label{fig:recovery}
+    \end{figure}
+
+    % ===================================================================
+    % SECTION 8: ADDITIONAL PARAMETER ESTIMATES
+    % ===================================================================
+    \section{Additional parameter estimates} \label{sec:supp_params}
+
+    \subsection{Covariate effects on RNA kinetics}
+
+    Tables~\ref{tab:cov_peak}--\ref{tab:cov_clearance} report the full posterior estimates of covariate effects on each RNA kinetic parameter. Effects are expressed as $\exp(\beta)$, representing the multiplicative fold change in the kinetic parameter relative to the reference category (unvaccinated, immunologically na\"ive, 0--30 year old with pre-Alpha variant). Values greater than 1 indicate an increase relative to the reference; values less than 1 indicate a decrease. These results are summarized visually in Figure~\ref{fig:covariates} of the main text.
+
+    \input{../../output/tables/supp_cov_peak.tex}
+    \input{../../output/tables/supp_cov_prolif.tex}
+    \input{../../output/tables/supp_cov_clearance.tex}
+
+    \subsection{RNA-to-PFU transformation and correlation structure}
+
+    Figure~\ref{fig:corr_densities} shows the marginal posterior densities for each element of the RNA individual random effect correlation matrix, and Figure~\ref{fig:corr_matrix} displays the full posterior median correlation matrix with uncertainty. These supplement the summary in Section~8.5 and Figure~\ref{fig:correlations} of the main text.
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/corr_densities.pdf}
+        \caption[RNA RE correlation densities]{Marginal posterior densities for each pairwise correlation among the four RNA individual random effects (peak timing $t_p$, peak height $\delta$, proliferation duration $\omega_p$, clearance duration $\omega_r$). Each panel shows the posterior density (filled curve) with the prior density (dashed line) overlaid for comparison. The shift between prior and posterior indicates the direction and degree of data learning for each correlation.}
+        \label{fig:corr_densities}
+    \end{figure}
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/corr_matrix.pdf}
+        \caption[RNA RE correlation matrix]{Posterior median correlation matrix of the RNA individual random effects, displayed as a heatmap. Colors indicate the sign and magnitude of each pairwise correlation: blue tones represent negative correlations and red tones represent positive correlations. Numeric values show the posterior median; 95\% credible intervals are reported in Section~8.5 of the main text.}
+        \label{fig:corr_matrix}
+    \end{figure}
+
+    \input{../../output/tables/supp_transformation.tex}
+
+    \subsection{Individual random effect standard deviations}
+
+    Table~\ref{tab:re_sd} reports the posterior estimates of individual-level random effect standard deviations for both the RNA and PFU trajectories. Larger values indicate greater between-individual variability in that kinetic parameter.
+
+    \input{../../output/tables/supp_re_sd.tex}
+
+    \subsection{Observation model parameters}
+
+    Tables~\ref{tab:lfd} and~\ref{tab:symptom} report the posterior estimates of the LFD and symptom onset observation model parameters, respectively. Both models include post-peak indicator interaction terms that allow the relationship between viral load and the outcome to differ between the proliferation and clearance phases: the LFD model uses a logistic link (Section~3.3 of the main text) and the symptom model uses a discrete-time complementary log-log hazard (Section~3.5).
+
+    \input{../../output/tables/supp_lfd.tex}
+    \input{../../output/tables/supp_symptom.tex}
+
+    \subsection{Stratified probability curves by covariate profile}
+    \label{sec:supp_strat}
+
+    Figure~\ref{fig:strat_curves} shows the probability of remaining culture-positive and LFD-positive as a function of days since first positive PCR, stratified by covariate profile. These curves supplement the marginal (population-averaged) probability curves presented in Figure~\ref{fig:probability_curves} of the main text by illustrating how variant, vaccination status, and infection history modulate the duration of infectiousness. Profiles are selected to maximise visual contrast and include the Reference (unvaccinated, pre-Alpha, first infection, age $<$30), single-factor profiles (Boosted, Reinfection, Delta, Omicron, Age 50+), and composite profiles (Boosted + Omicron 2022, Unboosted + Delta 2021).
+
+    \begin{landscape}
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/pnas/figS_stratified_curves.pdf}
+        \caption[Stratified probability curves]{Probability of remaining culture-positive \textbf{(A)} and LFD-positive \textbf{(B)} as a function of days since first positive PCR test, stratified by covariate profile. Points show posterior median probabilities at each integer day; vertical bars show 95\% credible intervals. Profiles are horizontally dodged for readability. The Reinfection profile clears fastest, consistent with anamnestic immunity accelerating viral clearance. The Boosted + Omicron (2022) profile shows the most prolonged culture positivity, reflecting the longer proliferation phase associated with both vaccination and Omicron. Culture and LFD positivity curves track each other closely across profiles, supporting the use of LFD as a proxy for infectious status regardless of covariate profile.}
+        \label{fig:strat_curves}
+    \end{figure}
+    \end{landscape}
+
+    \subsection{Serial rapid testing conditional on symptom onset}
+    \label{sec:supp_serial_lfd}
+
+    Figure~\ref{fig:conditional_symptom} shows the probability of remaining culture-positive conditional on lateral flow device (LFD) test outcomes, aligned to the day of symptom onset, for three representative covariate profiles (Reinfection, Reference, Boosted + Omicron 2022). In addition to conditioning on a single positive or negative LFD result, the figure includes a series conditioning on two consecutive negative LFD results (current day plus preceding day), quantifying the incremental reassurance provided by serial testing.
+
+    \begin{landscape}
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/pnas/fig8_conditional_symptom.pdf}
+        \caption[Conditional culture positivity by LFD outcome and symptom onset]{Probability of remaining culture-positive conditional on lateral flow device (LFD) test outcomes, as a function of days since symptom onset, for three representative covariate profiles. Points show posterior medians; vertical bars show 95\% credible intervals. Three conditions are compared: LFD positive (red), single LFD negative (blue), and two consecutive LFD negatives --- current day plus preceding day (green). Two consecutive negative results provide substantially greater reassurance than a single negative, particularly in the day 5--10 window where the single-negative false reassurance rate remains appreciable. Dashed vertical lines indicate days 5 and 10.}
+        \label{fig:conditional_symptom}
+    \end{figure}
+    \end{landscape}
+
+    \section{Anatomical site-specific sampling and pooling model}
+    \label{sec:supp_site}
+
+    \subsection{Motivation}
+
+    The five cohorts in this study differ in their upper respiratory tract sampling protocols. Three cohorts (ATACCC, NBA, Legacy) combine nasal and oropharyngeal swabs into a single collection tube prior to PCR, yielding one RNA concentration measurement per time point that reflects a \emph{pooled} sample from both anatomical sites. Two cohorts (HCT, UIUC) collect site-specific specimens --- nasal and throat swabs (HCT) or nasal and saliva samples (UIUC) --- that are processed separately, providing distinct RNA concentration measurements from each site.
+
+    In the current model, site-specific measurements from HCT and UIUC are combined prior to model fitting by taking the arithmetic mean on the linear scale: $R_{\text{obs}} = \log\bigl(\tfrac{1}{2}e^{R_n} + \tfrac{1}{2}e^{R_t}\bigr)$, where $R_n$ and $R_t$ denote the log RNA concentrations from the nasal and throat sites, respectively. While this produces a single summary value per time point, the averaging has two drawbacks. First, it discards information about site-specific kinetic differences --- for example, whether the nose or throat leads in proliferation or clears virus faster. Second, it introduces a subtle inconsistency with the PFU likelihood, which uses \emph{throat-only} culture data (the only site from which viable virus was assayed in HCT).
+
+    Figure~\ref{fig:site_comparison}A illustrates this issue using data from three representative HCT participants. The nasal and throat RNA trajectories can differ substantially in timing and magnitude, yet the current model receives only their average. The throat-only PFU measurements (orange triangles) align with the throat trajectory but may diverge from the nose trajectory, particularly during the early proliferation phase when viral replication in the nose may precede the throat.
+
+    \subsection{Chemistry of swab pooling}
+
+    When two swabs at concentrations $C_n$ and $C_t$ (copies/mL) are pooled into a single tube, the resulting measured concentration is a weighted sum:
+    \begin{equation}
+        C_{\text{pool}} = w_n C_n + w_t C_t, \quad w_n + w_t = 1,
+        \label{eq:pool_linear}
+    \end{equation}
+    where $w_n$ and $w_t$ reflect the relative collection efficiencies (encompassing swab absorption capacity, elution volume, and extraction efficiency at each anatomical site). On the natural-log scale, this becomes:
+    \begin{equation}
+        R_{\text{pool}} = \operatorname{log\_sum\_exp}\!\bigl(R_n + \alpha_n,\; R_t + \alpha_t\bigr),
+        \label{eq:pool_log}
+    \end{equation}
+    where $\alpha_s = \log w_s$ for $s \in \{n, t\}$ are log-scale collection-efficiency weights. This is numerically stable and can be computed directly in Stan using the built-in \texttt{log\_sum\_exp} function.
+
+    The current averaging procedure implicitly assumes equal weights ($w_n = w_t = 0.5$, i.e.\ $\alpha_n = \alpha_t = \log 0.5$). A site-specific extension would estimate $\alpha_n$ and $\alpha_t$ from data, allowing the model to learn whether one site dominates the pooled signal.
+
+    \subsection{Site-specific trajectory model}
+
+    A natural extension is to model each anatomical site $s \in \{n, t\}$ as having its own latent RNA trajectory, derived from the individual's shared infection process but offset by site-specific parameters:
+    \begin{align}
+        \tau_{p,s} &= \tau_p + \delta_\tau^{(s)}, &
+        d_{p,s} &= d_p + \delta_d^{(s)}, \nonumber \\
+        \omega_{p,s} &= \omega_p + \delta_{\omega_p}^{(s)}, &
+        \omega_{r,s} &= \omega_r + \delta_{\omega_r}^{(s)},
+        \label{eq:site_offsets}
+    \end{align}
+    where $\delta_\cdot^{(s)}$ are population-level site offset parameters (with throat as the reference site, so $\delta_\cdot^{(t)} = 0$). The site-specific trajectory $R_s(t)$ is then computed using the same piecewise exponential function as the main model but evaluated at the site-shifted parameters.
+
+    Figure~\ref{fig:site_comparison}B provides empirical support for this structure. The median log-difference between nasal and throat RNA ($R_n - R_t$) varies systematically over the course of infection, suggesting that the two sites do not simply differ by a constant offset but exhibit distinct kinetic profiles.
+
+    \subsection{Likelihood structure}
+
+    Under the site-specific extension, the RNA likelihood would depend on the cohort's sampling protocol:
+    \begin{itemize}
+        \item \textbf{Site-specific cohorts} (HCT, UIUC): Each site contributes an independent observation:
+        \begin{equation}
+            R_{s,\text{obs}} \sim \operatorname{Normal}\!\bigl(R_s(t),\; \sigma_{\text{rna}}\bigr), \quad s \in \{n, t\}.
+        \end{equation}
+        This doubles the number of RNA likelihood terms for these cohorts, providing substantially more information per time point.
+        \item \textbf{Pooled cohorts} (ATACCC, NBA, Legacy): The observed pooled measurement follows from Equation~\eqref{eq:pool_log}:
+        \begin{equation}
+            R_{\text{obs}} \sim \operatorname{Normal}\!\bigl(R_{\text{pool}}(t),\; \sigma_{\text{rna}}\bigr),
+        \end{equation}
+        where $R_{\text{pool}}(t)$ is computed from the two site-specific trajectories and the estimated pooling weights.
+    \end{itemize}
+    The PFU likelihood would use the throat-specific trajectory $R_t(t)$ directly, eliminating the current inconsistency between averaged RNA and throat-only PFU data.
+
+    \subsection{Implementation notes}
+
+    This extension is fully compatible with the existing model architecture and could be controlled by a \texttt{use\_site\_model} flag (analogous to the existing \texttt{use\_smooth} and \texttt{use\_wf} flags). When disabled ($= 0$), the site offsets collapse to zero and the pooling weights to $w_n = w_t = 0.5$, recovering the current model exactly. When enabled ($= 1$), the model would estimate up to four site offset parameters ($\delta_\tau, \delta_d, \delta_{\omega_p}, \delta_{\omega_r}$) plus one free pooling weight parameter (since $\alpha_n + \alpha_t$ is determined by the softmax constraint). These are population-level parameters identifiable from the $\sim$18 HCT and $\sim$60 UIUC individuals with site-specific data.
+
+    The data pipeline would expand site-specific observations into separate rows (one per site per time point) and add a site index to the Stan data. Site-specific limits of detection would also be required, since the LOD may differ between anatomical sites due to differences in swab type, collection technique, or assay calibration.
+
+    \begin{figure}[p]
+        \centering
+        \includegraphics[width=\linewidth]{\suppfigpath/pnas/figS_site_comparison.pdf}
+        \caption[Site-specific RNA trajectories in the HCT cohort]{\textbf{(A)} Nasal (blue) and throat (red) RNA concentration data (points) for three representative participants in the SARS-CoV-2 Human Challenge Study, with the arithmetic mean used in the current model shown as crosses. Smooth curves show smoothed piecewise exponential fits to each series independently: solid blue (nose), solid red (throat), dashed grey (average), and solid orange (PFU). Orange triangles show PFU measurements from throat-only viral culture. The two anatomical sites exhibit distinct kinetic profiles, with the nasal site often reaching higher peak concentrations and the PFU trajectory aligning more closely with the throat RNA than with the averaged signal. The current model's averaging obscures these site-specific differences. \textbf{(B)} Population-level median (shaded IQR) difference $\log(\text{RNA}_{\text{nose}}) - \log(\text{RNA}_{\text{throat}})$ across all HCT participants as a function of days since first positive test. The difference is not constant over time, supporting a model with site-specific kinetic offsets rather than a simple multiplicative correction. Bins with fewer than three observations are excluded.}
+        \label{fig:site_comparison}
+    \end{figure}
+
+\section{Relationship between log-affine transformation and convolution}
+\label{sec:supp_logaffine}
+
+The log-affine transformation that maps RNA kinetic parameters to PFU kinetic parameters (Section~3.2 of the main text) can be motivated from the underlying biology. In the target cell limited model, viral RNA accumulates according to $dR/dt = qV_t - eR_t$, where $q$ is the RNA production rate per infectious virion and $e$ is the RNA degradation rate. The solution is the convolution
+\begin{equation*}
+    R_t = q \int_0^t e^{-e(t-s)} V_s\,ds.
+\end{equation*}
+For a piecewise exponential infectious virus trajectory $\log V_t = g(t; \theta)$ with proliferation rate $a = \delta/\omega_p$ and clearance rate $b = \delta/\omega_r$, the convolution can be evaluated in closed form on each arm.
+
+\paragraph{Pre-peak ($t \leq t_p$).} On the rising arm, $V_t = V_0\,e^{at}$ and the convolution yields
+\begin{equation*}
+    R_t = \frac{q}{e + a}\,V_t
+\end{equation*}
+which is a pure scaling of the virus trajectory. Taking logarithms, $\log R_t = \log(q/(e+a)) + \log V_t$, which has the same functional form as the rising arm of a piecewise exponential with a log-additive offset to the peak height. The log-affine transformation captures this relationship exactly.
+
+\paragraph{Post-peak ($t > t_p$).} On the falling arm, $V_t = V_p\,e^{-b(t-t_p)}$, and the convolution gives
+\begin{equation*}
+    R_t = \frac{q}{e - b}\,V_t + \frac{q(a + b)}{(e + a)(e - b)}\,V_p\,e^{-e(t-t_p)}
+\end{equation*}
+(assuming $e \neq b$). The first term tracks the virus with a scaling factor; the second is a ``memory'' term that decays at the RNA clearance rate $e$ rather than the viral clearance rate $b$. When $e > b$ (RNA clears faster than virus declines), the memory term decays rapidly and the log-affine transformation is an excellent approximation. When $e < b$ (RNA persists longer than virus, the typical biological scenario), the memory term dominates at late times, producing the characteristic delayed and broadened RNA clearance observed empirically.
+
+\paragraph{Smooth trajectory.} For the smooth log-sum-exp trajectory $g_s(t)$, the convolution integral does not admit an elementary closed form---it reduces to a hypergeometric-type integral because the virus trajectory is a nonlinear function of two competing exponentials. However, the closed-form expressions for the piecewise trajectory are asymptotically correct far from the peak (where one exponential arm dominates), and the discrepancy is localized to a narrow region around the peak where both the virus and RNA concentrations are at their maximum and diagnostically least ambiguous. The log-affine transformation therefore provides a computationally tractable approximation that captures the dominant kinetic features---delayed peak and prolonged clearance of RNA relative to infectious virus---without requiring numerical quadrature or ODE integration inside the MCMC sampler (see Figure~\ref{fig:antigen_schematic}c--d).
+
+\section{LFD observation model: indicator interaction and alternative approaches}
+\label{sec:supp_lfd_deriv}
+
+\subsection{Antigen dynamics and the proliferation--clearance asymmetry}
+
+Lateral flow devices detect viral nucleocapsid protein (antigen), whose concentration $A_t$ follows the same production--clearance ODE as viral RNA (Section~\ref{sec:supp_logaffine}), but with virus rather than infected cells as the source:
+\begin{equation*}
+    \frac{dA}{dt} = \alpha_1 V_t - \alpha_2 A_t.
+\end{equation*}
+The ratio $A_t / V_t$ is not constant over the infection. On the rising arm, $A_t / V_t \approx \alpha_1 / (\alpha_2 + a)$; on the falling arm, $A_t / V_t \approx \alpha_1 / (\alpha_2 - b) + \text{memory term}$. Since $\alpha_2 + a > \alpha_2 - b$ (assuming $a, b > 0$ and $\alpha_2 > b$), the antigen-to-virus ratio is lower during proliferation than during clearance. This means that at a given viral load, antigen concentration is lower pre-peak than post-peak---the proliferation--clearance asymmetry that motivates the model extension.
+
+\subsection{Adopted approach: post-peak indicator interaction}
+
+The LFD observation model uses a post-peak indicator interaction to allow the relationship between viral load and LFD sensitivity to differ between the rising and falling phases of infection:
+\begin{equation*}
+    \text{logit}\,P(L_t^* = 1) = \gamma_0 + \gamma_1 \log R_t + \gamma_2 \log V_t + \gamma_3 \mathbbm{1}(t \geq t_p) + \gamma_4 \mathbbm{1}(t \geq t_p) \log R_t
+\end{equation*}
+where $t_p$ is the individual's estimated RNA peak time. The effective model for LFD sensitivity is:
+\begin{equation*}
+    \text{logit}\,P(L_t^* = 1) = \begin{cases}
+        \gamma_0 + \gamma_1 \log R_t + \gamma_2 \log V_t & \text{pre-peak} \\
+        (\gamma_0 + \gamma_3) + (\gamma_1 + \gamma_4) \log R_t + \gamma_2 \log V_t & \text{post-peak}
+    \end{cases}
+\end{equation*}
+This is a natural extension of the regression framework already used throughout the model. It requires no additional functions or numerical computation: the peak time $t_p$ is already estimated for each individual as part of the RNA trajectory. The discontinuity at the peak is negligible in practice because LFD sensitivity is near its maximum at peak viral load, and the binary outcome (positive/negative) makes the logistic probability nearly indistinguishable on either side of the peak.
+
+\subsection{Alternative approaches considered}
+
+We considered several alternative approaches to capturing the asymmetry (summarized in Table~\ref{tab:lfd_approaches} and Figure~\ref{fig:antigen_schematic}d):
+
+\begin{table}[h]
+\centering
+\caption{Comparison of approaches for modeling phase-asymmetric LFD sensitivity.}
+\label{tab:lfd_approaches}
+\begin{tabular}{lcccc}
+\toprule
+ & Convolution & Log-affine & Indicator & Derivative \\
+\midrule
+Additional parameters & 2 ($\alpha_1, \alpha_2$) & 8 (log-affine) & 2 ($\gamma_3, \gamma_4$) & 1 ($\gamma_3$) \\
+Closed form & No & Approximate & Yes & Yes \\
+Compatible with \texttt{reduce\_sum} & No\textsuperscript{a} & Yes & Yes & Yes \\
+Identifiable from binary data & Partially & Poorly & Yes & Yes \\
+Discontinuity at peak & No & No & Yes\textsuperscript{b} & No \\
+\bottomrule
+\multicolumn{5}{l}{\textsuperscript{a}Requires quadrature or discrete recursion at each observation.} \\
+\multicolumn{5}{l}{\textsuperscript{b}Negligible: binary data makes this practically undetectable.}
+\end{tabular}
 \end{table}
 
-\begin{table}[p]
-    \centering
-    \caption{Correlation between [RNA] and viral culture}
-    \begin{tabular}{lcccc}
-     \toprule
-     Parameter & $\exp(\rho)$ & 95\% CrI & $\theta$ & 95\% CrI\\
-     \midrule
-     Peak ($\delta^*$) & 0.47 & (0.45, 0.50) &  & \\
-     Proliferation ($\omega_p^*$) & 0.50 & (0.43, 0.59) &  & \\
-     Clearance ($\omega_r^*$) & 0.38 & (0.35, 0.42) &  & \\
-     \midrule
-     Peak time ($t_p^*$) & 1.37 & (1.15, 1.64) & -0.05 & (-0.32, 0.24)\\
-     \bottomrule
-     \end{tabular}
-    \label{tab:corr}
-\end{table}
+\paragraph{Full convolution.} The most principled approach would model $A_t$ explicitly via the convolution $A_t = \alpha_1 \int_0^t e^{-\alpha_2(t-s)} V_s\,ds$. For the piecewise trajectory, this has a closed form (Section~\ref{sec:supp_logaffine}). For the smooth trajectory used in practice, no elementary closed form exists; the integral would require numerical quadrature at each observation within each MCMC iteration, which is incompatible with Stan's \texttt{reduce\_sum} parallelism.
 
-\begin{table}[p]
+\paragraph{Log-affine antigen layer.} One could add a second log-affine transformation mapping PFU parameters to antigen parameters, producing a piecewise exponential antigen trajectory with 8 additional parameters. This approximates the convolution well in the tails but misses the post-peak shoulder. More importantly, with only binary LFD outcomes (no quantitative antigen measurements), the 8 additional parameters would be poorly identified.
+
+\paragraph{Derivative-based approach.} An alternative to the indicator interaction is to replace $\gamma_3 \mathbbm{1}(t \geq t_p) + \gamma_4 \mathbbm{1}(t \geq t_p) \log R_t$ with a single term $\gamma_3 \dot{g}_s(t)$, where $\dot{g}_s(t)$ is the time derivative of the smooth log-RNA trajectory. The derivative transitions smoothly from positive values during proliferation through zero at the peak to negative values during clearance, providing a continuous phase indicator with a single parameter. However, as a first-order correction that is additive in the logit, the derivative term cannot modulate the \emph{slope} of LFD sensitivity with respect to viral load---it only shifts the intercept. The indicator interaction, while discontinuous, is more flexible and fits naturally within the regression-based framework used throughout the model.
+
+\subsection{Derivative of the smooth trajectory}
+
+For reference, the time derivative of the smooth piecewise exponential trajectory is
+\begin{equation*}
+    \dot{g}_s(t) = \left[1 - \sigma\!\left(\kappa(\text{raw} - \delta)\right)\right] \cdot \frac{ab\left(e^{-a\tau} - e^{b\tau}\right)}{b\,e^{-a\tau} + a\,e^{b\tau}}
+\end{equation*}
+where $\tau = t - t_p$, $a = \delta/\omega_p$, $b = \delta/\omega_r$, $\sigma(\cdot)$ is the logistic sigmoid, $\kappa = 10$ is the soft-cap sharpness, and $\text{raw} = \delta + \log\!\left((a+b)/(b\,e^{-a\tau} + a\,e^{b\tau})\right)$ is the uncapped trajectory value. On the arms, this simplifies to $\dot{g}_s(t) \approx a$ for $t \ll t_p$ and $\dot{g}_s(t) \approx -b$ for $t \gg t_p$, recovering the piecewise derivative (Figure~\ref{fig:antigen_schematic}b). The derivative functions remain implemented in the Stan model code for potential future use.
+
+\begin{figure}[p]
     \centering
-    \caption{LFD positivity as a function of [RNA] and viral culture}
-    \begin{tabular}{lcc}
-     \toprule
-     Predictor & $\exp(\gamma)$ & 95\% CrI\\
-     \midrule
-     log RNA copies & 1.60 & (1.41, 1.80)\\
-     log PFU culturable virus & 1.27 & (1.12, 1.45)\\
-     \midrule
-     Intercept & -6.41 & (-7.80, -5.00)\\
-     \bottomrule
-     \end{tabular}
-    \label{tab:lfd}
-\end{table}
+    \includegraphics[width=\linewidth]{\suppfigpath/antigen_schematic.pdf}
+    \caption[Trajectory representations for the LFD observation model]{Comparison of trajectory representations for the LFD observation model, computed using representative parameters ($\delta = 10$, $\omega_p = 3$, $\omega_r = 7$, $t_p = 5$). \textbf{(a)} Smooth log-viral-load trajectory $g_s(t)$. \textbf{(b)} Time derivative $\dot{g}_s(t)$: positive during viral proliferation (blue shading) and negative during clearance (red shading), providing a smooth indicator of infection phase. \textbf{(c)} Antigen concentration $A_t$ (solid) from numerical convolution of the production--clearance ODE, overlaid on viral load $V_t = e^{g_s(t)}$ (dashed), both normalized to unit peak. The antigen curve lags behind viral load during proliferation and persists above it during clearance, illustrating the mechanism underlying asymmetric LFD sensitivity. \textbf{(d)} Comparison of approximation approaches on the log scale: the log-affine piecewise exponential (blue dashed) closely tracks the full convolution (black solid); the post-peak indicator interaction (green dash-dot) captures the phase-dependent slope change; the derivative term (red dotted) provides a smooth first-order correction. All three approximations are fit to the convolution by least squares for illustration.}
+    \label{fig:antigen_schematic}
+\end{figure}
+
 \end{appendix}

@@ -54,11 +54,15 @@ source("R/trajectories.R")
 
 # Option B: reconstruct from CSV files (needed if paths have changed)
 csv_files <- sort(list.files("output/stan_csv",
-                             pattern = "4827d7[.]csv$",
+                             pattern = "1c1813[.]csv$",
                              full.names = TRUE))
+stopifnot("No CSV files found — check output/stan_csv/" = length(csv_files) == 4)
 fit <- as_cmdstan_fit(csv_files)
 
-stan_data <- tar_read(stan_data)
+stan_data <- tryCatch(
+  tar_read(stan_data),
+  error = function(e) qs2::qs_read("_targets/objects/stan_data")
+)
 ```
 
 ## Example 1: Single agent, multiple draws

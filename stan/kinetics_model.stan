@@ -83,6 +83,45 @@ functions {
     return raw - log1p_exp(10.0 * (raw - dp)) * 0.1;
   }
 
+  // Time derivative of the piecewise trajectory.
+  // Returns dp/wp on the rising arm, 0 on flat-top, -dp/wr on the falling arm.
+  real piecewise_deriv(real t, real tp, real wp, real wr, real dp, real wf) {
+    if (t <= tp) {
+      return dp / wp;
+    } else if (t <= tp + wf) {
+      return 0.0;
+    } else {
+      return -dp / wr;
+    }
+  }
+
+  // Time derivative of the smooth trajectory, including the chain
+  // rule through the soft-cap at dp.  Uses the same intermediates
+  // as smooth() for numerical consistency.
+  //
+  // Raw derivative (before soft-cap):
+  //   d(raw)/dt = a*b*(exp(arg1) - exp(arg2)) / (b*exp(arg1) + a*exp(arg2))
+  //
+  // Chain rule through soft-cap  f(raw) = raw - log1p_exp(k*(raw-dp))/k:
+  //   f'(raw) = 1 - sigmoid(k*(raw - dp))   [≈ 1 on arms, → 0 at peak]
+  //
+  // Overall: d(smooth)/dt = f'(raw) * d(raw)/dt
+  real smooth_deriv(real t, real tp, real wp, real wr, real dp, real wf) {
+    real a = dp / wp;
+    real b = dp / wr;
+    real arg1 = fmin(-a * (t - tp), 50.0);
+    real arg2 = fmin( b * (t - (tp + wf)), 50.0);
+    real ea1 = exp(arg1);
+    real ea2 = exp(arg2);
+    real denom = b * ea1 + a * ea2;
+    // Raw derivative of the log-sum-exp envelope
+    real draw_dt = a * b * (ea1 - ea2) / denom;
+    // Soft-cap correction: chain rule through log1p_exp(k*(raw-dp))/k
+    real raw = dp + log((a + b) / denom);
+    real cap_factor = 1.0 - inv_logit(10.0 * (raw - dp));
+    return cap_factor * draw_dt;
+  }
+
   // Numerically stable log-affine transformation:
   //   exp(a) * pow(x, b) = exp(a + b*log(x))
   // with overflow protection (cap result at exp(30) ~ 1e13).
@@ -156,8 +195,9 @@ functions {
     real tau0_lfd_arg,   vector tau_lfd_arg,
     real sigma_rna_arg,  real sigma_pfu_arg,
     real fp_arg,         real fn_arg,
-    real eta_sym_intercept_arg,
-    real eta_sym_pfu_arg, real eta_sym_rna_arg,
+    real zeta_sym_intercept_arg,
+    real zeta_sym_pfu_arg, real zeta_sym_rna_arg,
+    real zeta_sym_postpeak_arg, real zeta_sym_postpeak_rna_arg,
     real sigma_sym_arg,
     vector alpha_tcid50_arg, vector alpha_cult_arg,
     real wf_pop,            // pre-computed pop flat-top (0 when use_wf=0)
@@ -215,6 +255,9 @@ functions {
       } else {
         rna_hat_n = safe_vl(piecewise(time_obs[nn], tp_rna, wp_rna, wr_rna, dp_rna, wf));
       }
+
+      // ── Post-peak indicator (for LFD phase asymmetry) ─────────────────────
+      real post_peak_n = (time_obs[nn] >= tp_rna) ? 1.0 : 0.0;
 
       // ── PFU trajectory ───────────────────────────────────────────────────
       // PFU REs only exist for PFU-informed individuals (pidx > 0).
@@ -325,25 +368,29 @@ functions {
       // ── LFD hat & likelihood ─────────────────────────────────────────────
       real lfd_hat_n = inv_logit(  tau0_lfd_arg
                                  + tau_lfd_arg[1] * rna_hat_n
-                                 + tau_lfd_arg[2] * pfu_hat_n);
+                                 + tau_lfd_arg[2] * pfu_hat_n
+                                 + tau_lfd_arg[3] * post_peak_n
+                                 + tau_lfd_arg[4] * post_peak_n * rna_hat_n);
       if (source_lfd) lfd_hat_n = inv_logit(logit(lfd_hat_n) + lfd_k_arg[k]);
       if (adj_lfd)    lfd_hat_n = inv_logit(logit(lfd_hat_n) + x_arg[i] * beta_lfd_arg);
       if (lfd_exist_obs[nn] == 1) ll += bernoulli_lpmf(lfd_obs[nn] | lfd_hat_n);
 
       // ── Symptom onset (discrete-time cloglog hazard) ─────────────────────
       real u_sym   = sigma_sym_arg * z_sym_arg[i];
-      real eta_lin = eta_sym_intercept_arg
-                   + eta_sym_pfu_arg * (pfu_hat_n / scale_vl)
-                   + eta_sym_rna_arg * (rna_hat_n / scale_vl)
-                   + u_sym;
-      if (source_sym) eta_lin = eta_lin + to_k_sym_arg[k];
-      if (adj_sym)    eta_lin = eta_lin + x_arg[i] * beta_sym_arg;
-      eta_lin = fmin(eta_lin, 10.0);
+      real zeta_lin = zeta_sym_intercept_arg
+                    + zeta_sym_pfu_arg * (pfu_hat_n / scale_vl)
+                    + zeta_sym_rna_arg * (rna_hat_n / scale_vl)
+                    + zeta_sym_postpeak_arg * post_peak_n
+                    + zeta_sym_postpeak_rna_arg * post_peak_n * (rna_hat_n / scale_vl)
+                    + u_sym;
+      if (source_sym) zeta_lin = zeta_lin + to_k_sym_arg[k];
+      if (adj_sym)    zeta_lin = zeta_lin + x_arg[i] * beta_sym_arg;
+      zeta_lin = fmin(zeta_lin, 10.0);
       if (sym_exist_obs[nn] == 1 && sym_at_risk_obs[nn] == 1) {
         if (sym_obs[nn] == 1) {
-          ll += log1m_exp(-exp(eta_lin));
+          ll += log1m_exp(-exp(zeta_lin));
         } else {
-          ll += -exp(eta_lin);
+          ll += -exp(zeta_lin);
         }
       }
     }
@@ -452,9 +499,11 @@ parameters {
   real<lower=0> sigma_pfu;
   
   // symptom onset discrete-time hazard (cloglog link)
-  real eta_sym_intercept; // baseline log-hazard
-  real<lower=0> eta_sym_pfu; // log V_t coefficient
-  real<lower=0> eta_sym_rna; // log R_t coefficient
+  real zeta_sym_intercept; // baseline log-hazard
+  real<lower=0> zeta_sym_pfu; // log V_t coefficient
+  real<lower=0> zeta_sym_rna; // log R_t coefficient
+  real zeta_sym_postpeak;     // post-peak indicator
+  real zeta_sym_postpeak_rna; // post-peak × log R_t interaction
   real<lower=0> sigma_sym; // individual random effect SD
   array[sum(M)] real z_sym; // NCP random effects (std normal)
 
@@ -529,8 +578,9 @@ parameters {
   // non-centered parameterization for logistic intercept for LFD
   real tau0_lfd_raw;
   
-  // coefficient vector for transformation of [RNA] and PFUs to LFD positivity
-  vector[2] tau_lfd;
+  // coefficient vector for LFD positivity.
+  // [1]=RNA, [2]=PFU, [3]=I(post-peak), [4]=I(post-peak)*RNA
+  vector[4] tau_lfd;
   
   // coefficient vectors for predictors of LFD positivity
   vector[P && adj_lfd ? P : 0] beta_lfd;
@@ -631,7 +681,8 @@ transformed parameters {
     tau0_lfd, tau_lfd,
     sigma_rna, sigma_pfu,
     fp, fn,
-    eta_sym_intercept, eta_sym_pfu, eta_sym_rna,
+    zeta_sym_intercept, zeta_sym_pfu, zeta_sym_rna,
+    zeta_sym_postpeak, zeta_sym_postpeak_rna,
     sigma_sym, alpha_tcid50, alpha_cult,
     wf_pop,
     // flags
@@ -733,9 +784,11 @@ model {
   tau_tp ~ std_normal();
 
   // symptom onset discrete-time hazard priors (cloglog link)
-  eta_sym_intercept ~ normal(-3, 1);  // low baseline daily hazard ~exp(-3)≈0.05
-  eta_sym_pfu ~ normal(0, 0.5) T[0, ];  // more virus -> more symptoms
-  eta_sym_rna ~ normal(0, 0.5) T[0, ];  // more RNA -> more symptoms
+  zeta_sym_intercept ~ normal(-3, 1);  // low baseline daily hazard ~exp(-3)≈0.05
+  zeta_sym_pfu ~ normal(0, 0.5) T[0, ];  // more virus -> more symptoms
+  zeta_sym_rna ~ normal(0, 0.5) T[0, ];  // more RNA -> more symptoms
+  zeta_sym_postpeak ~ std_normal();       // post-peak level shift
+  zeta_sym_postpeak_rna ~ std_normal();   // post-peak × RNA interaction
   sigma_sym ~ normal(0, 1) T[0, ];  // individual heterogeneity in susceptibility
 
   tau_dp[1] ~ normal(-1, 1);  // log-affine intercept

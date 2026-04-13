@@ -312,6 +312,8 @@ doc/                    ← Manuscripts and presentations
     demo.tex            ← ~90-slide presentation
     demo.bib            ← Presentation bibliography
 _archive/               ← Old imperative code (preserved for reference)
+
+Note: `paper1_model/`, `paper2_meta/`, `paper3_application/` folders removed (consolidated to single paper).
 CLAUDE.md               ← This file
 DESIGN_NOTE_IND_CORR.md ← Design plan for correlated PFU individual REs
 DIAGNOSIS_PATHFINDER.md ← Notes on Pathfinder initialization issues
@@ -385,30 +387,122 @@ DIAGNOSIS_PATHFINDER.md ← Notes on Pathfinder initialization issues
 
 **Goal:** Write all remaining manuscript sections using candidate fit results.
 
-#### 2a. Empty Sections to Write
+#### 2a. ✅ All Sections Written
+- **Completed.** All manuscript sections fully written with exact parameter estimates and diagnostics:
+  - Section 2.4 (Symptoms): background on symptom diaries as infectiousness proxies
+  - Section 4 (Estimation): MLE limitations, Bayesian motivation (partial pooling, regularization, uncertainty), full prior specification with numeric values and prior table
+  - Section 5 (Empirical Example): five cohort descriptions (ATACCC, UIUC, NBA, Legacy, HCT) with Table 1
+  - Section 6 (Computation): Stan/NUTS, NCP, threading, Pathfinder init, convergence criteria
+  - Section 7 (Model Checking): convergence diagnostics, PPC, LOO/WAIC with Pareto k analysis, parameter recovery
+  - Section 8 (Results): 6 subsections with exact posterior estimates
+  - Section 9 (Discussion): findings, methods, limitations, extensions, conclusion
+- **LKJ discrepancy fixed:** Section 3 previously stated LKJ(2) but Stan code uses LKJ(4); updated to forward-reference Section 4.3 where ν=4 is specified
+- **Manuscript compiles cleanly** via `tinytex::latexmk()` (608 lines, 57 balanced environments)
 
-| Section | Content Needed |
-|---------|---------------|
-| **2.4 Symptoms** | Background on symptom diaries as infectiousness proxies, prior literature |
-| **5 Computation** | Stan implementation details, NCP, threading, Pathfinder init, convergence criteria, software versions |
-| **6 Model checking** | Prior/posterior predictive checks, LOO/WAIC, parameter recovery results |
-| **7.1–7.2** | Individual-level trajectory fits, covariate effects interpretation |
-| **7.3 Population parameters** | Population-level estimates table and interpretation |
-| **7.4 Transmission models** | Application to testing/isolation policy (probability curves) |
-| **8 Discussion** | Summary of findings, limitations, comparison to prior modeling approaches, future directions |
+#### 2b. ✅ Supporting Manuscript Tasks
+- **Completed:**
+  - Bibliography: `doc/manuscripts/tnd.bib` created with 48 entries covering all cited works
+  - 30+ `\cite{}` commands added throughout Sections 1–9
+  - Figure environments: Figs 2–5 with `\includegraphics`, captions, labels (pointing to `output/figures/pnas/`)
+  - Supplement figure paths updated to `../../output/figures/`; captions added to all figures
+  - Cross-references validated: `\ref{tab:cohorts}`, `\ref{sec:computation}`, `\ref{sec:priors}`, etc.
+  - LaTeX compilation verified via TinyTeX
+- **Not done:** Update presentation (`doc/presentations/demo.tex`) with final results (deferred)
 
-#### 2b. Supporting Manuscript Tasks
-- Set up bibliography (`.bib` file — currently commented out in `main.tex`)
-- Add figure/table captions in supplement
-- Incorporate parameter recovery results as a figure/table
-- Cross-reference all generated figures from `output/figures/`
-- Update presentation (`doc/presentations/demo.tex`) with final results
+#### 2c. ✅ Resolved Multi-Paper Structure
+- **Decision:** Single paper. Removed `paper1_model/`, `paper2_meta/`, `paper3_application/` folders.
 
-#### 2c. Resolve Multi-Paper Structure
-- `paper1_model/` — empty
-- `paper2_meta/` — partially started, content mostly duplicates main manuscript
-- `paper3_application/` — empty
-- **Decision needed:** Is this one paper or a series? If one paper, consolidate and remove empty folders. If series, define scope boundaries.
+#### 2d. Clean Up, Finalize, and Make Supplement Submission-Ready
+
+**Goal:** Polish the supplement/appendix to publication quality; ensure all generated outputs are included, referenced, and captioned; organize into clear sections; make formatting easily adaptable to different journal requirements.
+
+##### Supplement organization
+- Add a title page for the supplement ("Supplementary Materials for: [title]")
+- Organize into labeled sections (e.g., A: Prior Predictive Checks, B: Convergence Diagnostics, C: Individual Trajectory Fits, D: Posterior Predictive Checks, E: Additional Parameter Estimates)
+- Add `\section*` or `\subsection*` headings with brief introductory text for each section
+- Make figure/table/equation counter prefixes easily configurable (currently `A1`, `A2`, ... — some journals want `S1`, `S2`, ... or `Fig. S1`)
+
+##### Missing figures to add
+The following generated figures are NOT currently included in the manuscript or supplement:
+
+| Figure | File | Where it belongs |
+|--------|------|------------------|
+| Legacy cohort individual fits | `legacy_fit.pdf` | Supplement (cohort fits section) |
+| Parameter recovery | `param_recovery.pdf` | Supplement (model checking section) — referenced in Section 7.4 text |
+| PPC: RNA | `ppc_rna.pdf` | Supplement (PPC section) — referenced in Section 7.2 text |
+| PPC: PFU | `ppc_pfu.pdf` | Supplement (PPC section) — referenced in Section 7.2 text |
+| PPC: LFD calibration | `ppc_lfd_calibration.pdf` | Supplement (PPC section) — referenced in Section 7.2 text |
+| Prior: symptom model | `prior_sym.pdf` | Supplement (prior predictive section) |
+| Correlation densities | `corr_densities.pdf` | Supplement (parameter estimates section) |
+| Correlation matrix | `corr_matrix.pdf` | Supplement (parameter estimates section) |
+| TCL model examples | `tcl_example_1.pdf`, `tcl_example_2.pdf` | Supplement or main text (Section 3.1 motivation) |
+
+##### Cross-references and captions
+- Ensure every supplement figure has a `\label{fig:...}` and is `\ref`-ed from main text where discussed
+- Review all captions for informativeness: each caption should be self-contained (describe what is shown, how to read the figure, and key takeaways)
+- Ensure all main-text figures (Figs 2–5) have publication-quality captions
+
+##### Supplement figure styling
+The main-text figures (Figs 2–5) use `save_journal_figure()` from `R/figure_themes.R` with journal-adaptive themes (PNAS/PLoS/Annals), but all supplement/diagnostic figures in `R/plots.R` and `R/diagnostics.R` use raw `ggsave()` with hardcoded sizes and no journal theme. To ensure visual consistency:
+- Refactor supplement figure generation to use `theme_journal()` and `journal_colors()` from `R/figure_themes.R`
+- Use `save_journal_figure()` for all supplement outputs so they automatically adapt when the journal style is changed
+- Affected figures: prior predictive checks (`prior_pe.pdf`, `prior_trans_pe.pdf`, `prior_trajectories.pdf`, `prior_sym.pdf`), trace plots (`trace_plots.pdf`), cohort fits (`ataccc_fit.pdf`, `nba_fit.pdf`, `uiuc_fit.pdf`, `hct_fit.pdf`, `legacy_fit.pdf`), PPCs (`ppc_rna.pdf`, `ppc_pfu.pdf`, `ppc_lfd_calibration.pdf`), correlation plots (`corr_densities.pdf`, `corr_matrix.pdf`), parameter recovery (`param_recovery.pdf`)
+- Ensure consistent font family, font size, gridline style, axis formatting, and color palette between main text and supplement figures
+
+##### Full manuscript review
+- Proofread all sections for consistency in notation, tense, terminology
+- Check that all parameter symbols match between model description (Section 3), priors (Section 4.3), and results (Section 8)
+- Verify all numeric values cited in text match the actual posterior summaries
+- Review against comparable published papers (Hay et al. 2022, Ke et al. 2022, Kissler et al. 2021, Singanayagam et al. 2022) to identify any expected supplementary content that is missing
+- Common supplement content in similar papers that we should verify:
+  - Prior predictive checks ✅ (partially included)
+  - Trace plots / convergence diagnostics ✅ (included)
+  - Individual-level fits by cohort ✅ (4 of 5 cohorts included; Legacy missing)
+  - Posterior predictive checks ❌ (not in supplement yet)
+  - Parameter recovery / simulation study results ❌ (not in supplement yet)
+  - Full parameter tables with all estimates ✅ (covariate effect tables included)
+  - Sensitivity analysis results (deferred to Phase 3)
+  - Data processing details / inclusion criteria (partially in main text Section 5)
+  - Software and package versions (partially in Section 6)
+
+##### Journal formatting flexibility
+- Create a configuration block at the top of `supplement.tex` (or in `setup.tex`) with toggles for:
+  - Figure/table prefix (`A` vs `S` vs `SI`)
+  - Section numbering style
+  - Title page format
+  - Page numbering (continue from main or restart)
+
+#### 2e. Mock Peer Review
+
+**Goal:** Conduct a structured mock peer review using multiple subagents with distinct expert personas. Each reviewer reads the full manuscript and codebase, then writes a structured review identifying strengths, weaknesses, and prioritized recommendations.
+
+##### Reviewer personas
+
+| Reviewer | Expertise | Focus areas |
+|----------|-----------|-------------|
+| **Reviewer 1: Bayesian Modeler** | Hierarchical models, HMC, Stan, prior specification, model comparison | Prior choices and sensitivity, NCP justification, LOO/WAIC interpretation, model identifiability, computational efficiency |
+| **Reviewer 2: Infectious Disease / Virology** | SARS-CoV-2 biology, viral kinetics, transmission dynamics, culture assays | Biological plausibility of model structure, interpretation of PFU/RNA relationship, symptom model, comparison to mechanistic models, clinical relevance |
+| **Reviewer 3: Statistician** | Mixed-effects models, measurement error, missing data, model diagnostics | Likelihood specification, random effect structure, missing data assumptions, parameter recovery methodology, coverage, identifiability |
+| **Reviewer 4: Copyeditor / Presentation** | Scientific writing, journal style, figure quality, reproducibility | Clarity of exposition, notation consistency, figure quality and captions, supplementary completeness, reproducibility standards |
+
+##### Review structure (each reviewer)
+1. **Summary** (2–3 sentences): What the paper does and its main contribution
+2. **Strengths** (3–5 bullets): What the paper does well
+3. **Major concerns** (numbered): Issues that must be addressed before publication
+4. **Minor concerns** (numbered): Suggestions for improvement
+5. **Questions for authors** (numbered): Clarification requests
+6. **Prioritized action items** (ordered list): Concrete next steps ranked by importance
+
+##### Execution plan
+- Launch each reviewer as a subagent in plan mode with full access to `main.tex`, `supplement.tex`, `tnd.bib`, `stan/kinetics_model.stan`, `R/*.R`, and `CLAUDE.md`
+- Each subagent writes its review independently
+- Aggregate reviews into a unified action plan with deduplicated, prioritized recommendations
+- Use the aggregated review to guide revisions before submission
+
+#### 2f. Update Presentation with Final Results
+- Update `doc/presentations/demo.tex` with final parameter estimates, figures, and results from the candidate fit
+- Align slide content with finalized manuscript structure and notation
+- **Deferred until after peer review (2e)** — no sense updating until the final structure is settled
 
 ### Phase 3: Sensitivity Analysis (Post-Submission)
 

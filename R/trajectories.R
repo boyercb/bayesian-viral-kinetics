@@ -181,7 +181,8 @@ sample_trajectories <- function(
     "tau_tp", "tau_dp", "tau_wp", "tau_wr",
     "tau0_lfd", "tau_lfd",
     "sigma_rna", "sigma_pfu",
-    "eta_sym_intercept", "eta_sym_pfu", "eta_sym_rna", "sigma_sym"
+    "zeta_sym_intercept", "zeta_sym_pfu", "zeta_sym_rna",
+    "zeta_sym_postpeak", "zeta_sym_postpeak_rna", "sigma_sym"
   )
   if (has_corr)    vars <- c(vars, "sigma_ind_rna", "L_Omega_rna")
   if (has_adj_rna) vars <- c(vars, "beta_dp_rna", "beta_wp_rna", "beta_wr_rna")
@@ -307,10 +308,15 @@ sample_trajectories <- function(
     s_rna <- drws[d, "sigma_rna"]
     s_pfu <- drws[d, "sigma_pfu"]
 
-    ei <- drws[d, "eta_sym_intercept"]
-    ep <- drws[d, "eta_sym_pfu"]
-    er <- drws[d, "eta_sym_rna"]
+    ei <- drws[d, "zeta_sym_intercept"]
+    ep <- drws[d, "zeta_sym_pfu"]
+    er <- drws[d, "zeta_sym_rna"]
+    e_pp  <- drws[d, "zeta_sym_postpeak"]
+    e_ppr <- drws[d, "zeta_sym_postpeak_rna"]
     ss <- drws[d, "sigma_sym"]
+
+    lfd_pp  <- drws[d, "tau_lfd[3]"]
+    lfd_ppr <- drws[d, "tau_lfd[4]"]
 
     # Covariate betas (RNA)
     if (has_adj_rna) {
@@ -421,12 +427,16 @@ sample_trajectories <- function(
       w  <- i1:i2;  nw <- length(w)
 
       # ── LFD probability ───────────────────────────────────────────────────
-      lfd_p <- expit(lfd0 + lfd_c[1] * rna[w] + lfd_c[2] * pfu[w])
+      post_peak_w <- as.numeric(t_grid[w] >= tp_rna)
+      lfd_p <- expit(lfd0 + lfd_c[1] * rna[w] + lfd_c[2] * pfu[w]
+                     + lfd_pp * post_peak_w + lfd_ppr * post_peak_w * rna[w])
 
       # ── Symptom hazard (cloglog) ──────────────────────────────────────────
       u_sym  <- ss * z_sym
-      eta_l  <- ei + ep * (pfu[w] / scale_vl) + er * (rna[w] / scale_vl) + u_sym
-      sym_hz <- 1 - exp(-exp(pmin(eta_l, 10)))
+      zeta_l <- ei + ep * (pfu[w] / scale_vl) + er * (rna[w] / scale_vl) +
+                   e_pp * post_peak_w + e_ppr * post_peak_w * (rna[w] / scale_vl) +
+                   u_sym
+      sym_hz <- 1 - exp(-exp(pmin(zeta_l, 10)))
 
       # ── Generate observations ─────────────────────────────────────────────
       if (include_noise) {

@@ -621,7 +621,7 @@ build_stan_data <- function(stacked_dat, flags = list()) {
       ct_to_rna(40, type = "nba")      + 0.01,
       ct_to_rna(40, type = "ata")      + 0.01,
       ct_to_rna(47, type = "uiuc-ct")  + 0.01,
-      log(1000)                         + 0.01,
+      log(31.62278)                     + 0.01,  # 10^1.5 copies/mL — Killingley et al. qPCR LOD
       ct_to_rna(40, type = "nba")      + 0.01
     ),
     lod_pfu = c(0, 2.3, 2.3, log(5), 0),

@@ -85,9 +85,11 @@ build_init <- function(stan_data, chains = 4) {
       fn = 0.01,
 
       # symptom hazard
-      eta_sym_intercept = -3,
-      eta_sym_pfu = 0.3,
-      eta_sym_rna = 0.3,
+      zeta_sym_intercept = -3,
+      zeta_sym_pfu = 0.3,
+      zeta_sym_rna = 0.3,
+      zeta_sym_postpeak = 0,
+      zeta_sym_postpeak_rna = 0,
       sigma_sym   = 0.5,
 
       # RNA→PFU transform (log-affine)
@@ -98,7 +100,7 @@ build_init <- function(stan_data, chains = 4) {
 
       # LFD model
       tau0_lfd_raw = 0,
-      tau_lfd  = c(0.1, 0.1),
+      tau_lfd  = c(0.1, 0.1, 0, 0),
 
       # viral culture models
       alpha_tcid50 = c(8, -0.5, 0),  # [a, log(b), log(sigma)]
@@ -186,7 +188,8 @@ jitter_init <- function(init, sd_scalar = 0.1, sd_vec = 0.05,
 
   # Unconstrained scalar population params
   for (nm in c("dp_raw", "wp_raw", "wr_raw", "wf_raw",
-               "eta_sym_intercept", "tau0_lfd_raw")) {
+               "zeta_sym_intercept", "zeta_sym_postpeak",
+               "zeta_sym_postpeak_rna", "tau0_lfd_raw")) {
     if (!is.null(init[[nm]])) init[[nm]] <- init[[nm]] + rnorm(length(init[[nm]]), 0, sd_scalar)
   }
 
@@ -205,8 +208,8 @@ jitter_init <- function(init, sd_scalar = 0.1, sd_vec = 0.05,
     }
   }
 
-  # Positive coefficients (eta_sym_pfu, eta_sym_rna): jitter on log scale
-  for (nm in c("eta_sym_pfu", "eta_sym_rna")) {
+  # Positive coefficients (zeta_sym_pfu, zeta_sym_rna): jitter on log scale
+  for (nm in c("zeta_sym_pfu", "zeta_sym_rna")) {
     if (!is.null(init[[nm]]) && init[[nm]] > 0) {
       init[[nm]] <- init[[nm]] * exp(rnorm(1, 0, sd_scalar))
     }
@@ -470,7 +473,8 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
     # LFD coefficients
     "tau0_lfd", "tau_lfd",
     # symptom onset hazard (cloglog)
-    "eta_sym_intercept", "eta_sym_pfu", "eta_sym_rna",
+    "zeta_sym_intercept", "zeta_sym_pfu", "zeta_sym_rna",
+    "zeta_sym_postpeak", "zeta_sym_postpeak_rna",
     "sigma_sym", "z_sym"
   )
 
@@ -541,7 +545,7 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
     src == 1 ~ ct_to_rna(40, type = "nba")     + 0.01,
     src == 2 ~ ct_to_rna(40, type = "ata")     + 0.01,
     src == 3 ~ ct_to_rna(47, type = "uiuc-ct") + 0.01,
-    src == 4 ~ log(1000) + 0.01,
+    src == 4 ~ log(31.62278) + 0.01,  # 10^1.5 copies/mL — Killingley et al. qPCR LOD
     src == 5 ~ ct_to_rna(40, type = "nba")     + 0.01
   )
 
@@ -670,10 +674,14 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
   pfu_hat <- rvar_traj_fun(t, tp_pfu, wp_pfu, wr_pfu, dp_pfu, wf, use_smooth_flag)
 
   # --- LFD probability -----------------------------------------------------
-  # Stan: tau0_lfd (transformed param), tau_lfd (vector[2])
+  # Stan: tau0_lfd (transformed param), tau_lfd (vector[4])
+  # Indicator interaction: post-peak indicator allows different intercept+slope
+  post_peak <- (t >= tp_rna) * 1  # rvar: 1 if past individual peak, 0 otherwise
   lfd_hat <- expit(k$tau0_lfd +
                      k$tau_lfd[1] * rna_hat +
-                     k$tau_lfd[2] * pfu_hat)
+                     k$tau_lfd[2] * pfu_hat +
+                     k$tau_lfd[3] * post_peak +
+                     k$tau_lfd[4] * post_peak * rna_hat)
 
   if (stan_data$source_lfd) {
     lfd_hat <- expit(logit(lfd_hat) + k$lfd_k[src])
@@ -686,21 +694,24 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
   # --- Symptom onset hazard (cloglog) ---------------------------------------
   # Normalise viral load by prior_dp_mean (matches Stan's scale_vl)
   scale_vl <- stan_data$prior_dp_mean
+  post_peak <- (t >= tp_rna) * 1
   u_sym   <- k$sigma_sym * k$z_sym[id]
-  eta_lin <- k$eta_sym_intercept +
-    k$eta_sym_pfu * (pfu_hat / scale_vl) +
-    k$eta_sym_rna * (rna_hat / scale_vl) +
+  zeta_lin <- k$zeta_sym_intercept +
+    k$zeta_sym_pfu * (pfu_hat / scale_vl) +
+    k$zeta_sym_rna * (rna_hat / scale_vl) +
+    k$zeta_sym_postpeak * post_peak +
+    k$zeta_sym_postpeak_rna * post_peak * (rna_hat / scale_vl) +
     u_sym
 
   if (stan_data$source_sym) {
-    eta_lin <- eta_lin + k$to_k_sym[src]
+    zeta_lin <- zeta_lin + k$to_k_sym[src]
   }
 
   if (stan_data$adj_sym) {
-    eta_lin <- eta_lin + x %**% k$beta_sym
+    zeta_lin <- zeta_lin + x %**% k$beta_sym
   }
 
-  sym_hat <- 1 - exp(-exp(eta_lin))
+  sym_hat <- 1 - exp(-exp(zeta_lin))
 
   list(
     rna_hat = rna_hat,
@@ -749,9 +760,11 @@ prior_predictive <- function(data, draws = 10) {
   tau_wr  <- truncnorm::rtruncnorm(draws, 0, Inf, 1, 0.5)
 
   # --- symptom onset hazard (cloglog) ---
-  eta_sym_intercept <- rnorm(draws, -3, 1)
-  eta_sym_pfu <- truncnorm::rtruncnorm(draws, 0, Inf, 0, 0.5)
-  eta_sym_rna <- truncnorm::rtruncnorm(draws, 0, Inf, 0, 0.5)
+  zeta_sym_intercept <- rnorm(draws, -3, 1)
+  zeta_sym_pfu <- truncnorm::rtruncnorm(draws, 0, Inf, 0, 0.5)
+  zeta_sym_rna <- truncnorm::rtruncnorm(draws, 0, Inf, 0, 0.5)
+  zeta_sym_postpeak <- rnorm(draws, 0, 1)
+  zeta_sym_postpeak_rna <- rnorm(draws, 0, 1)
   sigma_sym   <- truncnorm::rtruncnorm(draws, 0, Inf, 0, 1)
   z_sym <- mvtnorm::rmvnorm(sum(data$M), rep(0, draws), diag(rep(1, draws)))
 
@@ -766,7 +779,7 @@ prior_predictive <- function(data, draws = 10) {
   # --- LFD coefficients ---
   tau0_lfd_raw <- rnorm(draws)
   tau0_lfd <- logit(data$prior_lfd_mean) + 1 * tau0_lfd_raw
-  tau_lfd  <- mvtnorm::rmvnorm(draws, rep(0, 2))
+  tau_lfd  <- mvtnorm::rmvnorm(draws, rep(0, 4))
 
   # --- test error rates ---
   if (data$test_error) {
@@ -993,7 +1006,9 @@ prior_predictive <- function(data, draws = 10) {
     rna_hat[, d][!is.finite(rna_hat[, d])] <- 0
     pfu_hat[, d][!is.finite(pfu_hat[, d])] <- 0
     lfd_hat[, d] <- plogis(tau0_lfd[d] + tau_lfd[d, 1] * rna_hat[, d] +
-                             tau_lfd[d, 2] * pfu_hat[, d])
+                             tau_lfd[d, 2] * pfu_hat[, d] +
+                             tau_lfd[d, 3] * as.numeric(data$time >= tp_rna[data$id, d]) +
+                             tau_lfd[d, 4] * as.numeric(data$time >= tp_rna[data$id, d]) * rna_hat[, d])
 
     if (data$source_lfd) {
       lfd_hat[, d] <- plogis(qlogis(lfd_hat[, d]) + lfd_k[data$source, d])
@@ -1037,21 +1052,24 @@ prior_predictive <- function(data, draws = 10) {
   scale_vl <- data$prior_dp_mean
 
   for (d in seq_len(draws)) {
-    eta_lin <- eta_sym_intercept[d] +
-      eta_sym_pfu[d] * (pfu_hat[, d] / scale_vl) +
-      eta_sym_rna[d] * (rna_hat[, d] / scale_vl) +
+    post_peak_pp <- as.numeric(data$time >= tp_rna[data$id, d])
+    zeta_lin <- zeta_sym_intercept[d] +
+      zeta_sym_pfu[d] * (pfu_hat[, d] / scale_vl) +
+      zeta_sym_rna[d] * (rna_hat[, d] / scale_vl) +
+      zeta_sym_postpeak[d] * post_peak_pp +
+      zeta_sym_postpeak_rna[d] * post_peak_pp * (rna_hat[, d] / scale_vl) +
       u_sym[data$id, d]
 
     if (data$source_sym) {
-      eta_lin <- eta_lin + to_k_sym[data$source, d]
+      zeta_lin <- zeta_lin + to_k_sym[data$source, d]
     }
 
     if (data$adj_sym) {
-      eta_lin <- eta_lin +
+      zeta_lin <- zeta_lin +
         as.matrix(data$x[data$id, ]) %*% beta_sym[d, ]
     }
 
-    sym_hat[, d] <- 1 - exp(-exp(eta_lin))
+    sym_hat[, d] <- 1 - exp(-exp(zeta_lin))
     sym[, d] <- rbinom(sum(data$N), 1, sym_hat[, d])
   }
 
@@ -1064,8 +1082,10 @@ prior_predictive <- function(data, draws = 10) {
     lod_rna = data$lod_rna[src], lod_pfu = data$lod_pfu[src],
     tau0_tp = tau0_tp, tau0_dp = tau0_dp,
     tau0_wp = tau0_wp, tau0_wr = tau0_wr,
-    eta_sym_intercept = eta_sym_intercept,
-    eta_sym_pfu = eta_sym_pfu, eta_sym_rna = eta_sym_rna,
+    zeta_sym_intercept = zeta_sym_intercept,
+    zeta_sym_pfu = zeta_sym_pfu, zeta_sym_rna = zeta_sym_rna,
+    zeta_sym_postpeak = zeta_sym_postpeak,
+    zeta_sym_postpeak_rna = zeta_sym_postpeak_rna,
     sigma_sym = sigma_sym,
     tau_tp = tau_tp, tau_dp = tau_dp, tau_wp = tau_wp, tau_wr = tau_wr,
     dp_rna = dp_rna, wp_rna = wp_rna, wr_rna = wr_rna, tp_rna = tp_rna,
@@ -1113,15 +1133,17 @@ default_params <- function(data) {
     tau0_wr = -0.7,   tau_wr = 0.8,
 
     # --- LFD model ---
-    # Posterior: tau_lfd ≈ (0.35, 0.29)
+    # Posterior: tau_lfd ≈ (0.35, 0.29, 0, 0)
     tau0_lfd = logit(data$prior_lfd_mean),
-    tau_lfd  = c(0.35, 0.29),
+    tau_lfd  = c(0.35, 0.29, 0, 0),
 
     # --- symptom onset hazard (cloglog) ---
     # Posterior: intercept ≈ -1.76, pfu ≈ 0.40, rna ≈ 1.55, sigma ≈ 0.77
-    eta_sym_intercept = -1.8,
-    eta_sym_pfu       =  0.4,
-    eta_sym_rna       =  1.5,
+    zeta_sym_intercept = -1.8,
+    zeta_sym_pfu       =  0.4,
+    zeta_sym_rna       =  1.5,
+    zeta_sym_postpeak  =  0,
+    zeta_sym_postpeak_rna = 0,
     sigma_sym         =  0.8,
 
     # --- test error ---
@@ -1403,9 +1425,12 @@ simulate_data <- function(data, params = NULL, seed = 42) {
   pfu_hat <- pmax(pmin(pfu_hat, 50), -50)
 
   # LFD probability
+  post_peak_st <- as.numeric(data$time >= tp_rna_ind[id])
   lfd_logit <- params$tau0_lfd +
     params$tau_lfd[1] * rna_hat +
-    params$tau_lfd[2] * pfu_hat
+    params$tau_lfd[2] * pfu_hat +
+    params$tau_lfd[3] * post_peak_st +
+    params$tau_lfd[4] * post_peak_st * rna_hat
 
   if (data$source_lfd) {
     lfd_logit <- lfd_logit + lfd_k[source]
@@ -1418,20 +1443,23 @@ simulate_data <- function(data, params = NULL, seed = 42) {
 
   # Symptom hazard (cloglog) — normalise by prior_dp_mean (matches Stan)
   scale_vl <- data$prior_dp_mean
+  post_peak_st <- as.numeric(data$time >= tp_rna_ind[id])
   u_sym <- params$sigma_sym * z_sym[id]
-  eta_lin <- params$eta_sym_intercept +
-    params$eta_sym_pfu * (pfu_hat / scale_vl) +
-    params$eta_sym_rna * (rna_hat / scale_vl) +
+  zeta_lin <- params$zeta_sym_intercept +
+    params$zeta_sym_pfu * (pfu_hat / scale_vl) +
+    params$zeta_sym_rna * (rna_hat / scale_vl) +
+    params$zeta_sym_postpeak * post_peak_st +
+    params$zeta_sym_postpeak_rna * post_peak_st * (rna_hat / scale_vl) +
     u_sym
 
   if (data$source_sym) {
-    eta_lin <- eta_lin + to_k_sym[source]
+    zeta_lin <- zeta_lin + to_k_sym[source]
   }
   if (data$adj_sym && P > 0) {
     if (!exists("x_mat")) x_mat <- as.matrix(data$x)
-    eta_lin <- eta_lin + as.numeric(x_mat[id, , drop = FALSE] %*% beta_sym)
+    zeta_lin <- zeta_lin + as.numeric(x_mat[id, , drop = FALSE] %*% beta_sym)
   }
-  sym_hat <- 1 - exp(-exp(eta_lin))
+  sym_hat <- 1 - exp(-exp(zeta_lin))
 
   # ─── Draw noisy observations ─────────────────────────────────────────────
   rna_obs <- rnorm(N_obs, rna_hat, sigma_rna)

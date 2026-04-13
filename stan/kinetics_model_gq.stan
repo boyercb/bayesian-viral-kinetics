@@ -70,6 +70,30 @@ functions {
     return raw - log1p_exp(10.0 * (raw - dp)) * 0.1;
   }
 
+  real piecewise_deriv(real t, real tp, real wp, real wr, real dp, real wf) {
+    if (t <= tp) {
+      return dp / wp;
+    } else if (t <= tp + wf) {
+      return 0.0;
+    } else {
+      return -dp / wr;
+    }
+  }
+
+  real smooth_deriv(real t, real tp, real wp, real wr, real dp, real wf) {
+    real a = dp / wp;
+    real b = dp / wr;
+    real arg1 = fmin(-a * (t - tp), 50.0);
+    real arg2 = fmin( b * (t - (tp + wf)), 50.0);
+    real ea1 = exp(arg1);
+    real ea2 = exp(arg2);
+    real denom = b * ea1 + a * ea2;
+    real draw_dt = a * b * (ea1 - ea2) / denom;
+    real raw = dp + log((a + b) / denom);
+    real cap_factor = 1.0 - inv_logit(10.0 * (raw - dp));
+    return cap_factor * draw_dt;
+  }
+
   real log_affine(real intercept, real elasticity, real x) {
     return exp(fmin(intercept + elasticity * log(x), 30.0));
   }
@@ -166,9 +190,11 @@ parameters {
   real<lower=0> sigma_rna;
   real<lower=0> sigma_pfu;
 
-  real eta_sym_intercept;
-  real<lower=0> eta_sym_pfu;
-  real<lower=0> eta_sym_rna;
+  real zeta_sym_intercept;
+  real<lower=0> zeta_sym_pfu;
+  real<lower=0> zeta_sym_rna;
+  real zeta_sym_postpeak;
+  real zeta_sym_postpeak_rna;
   real<lower=0> sigma_sym;
   array[sum(M)] real z_sym;
 
@@ -224,7 +250,7 @@ parameters {
   vector[2] alpha_cult;
 
   real tau0_lfd_raw;
-  vector[2] tau_lfd;
+  vector[4] tau_lfd;
   vector[P && adj_lfd ? P : 0] beta_lfd;
   array[K && source_lfd ? K : 0] real lfd_k;
 
@@ -361,6 +387,7 @@ generated quantities {
       } else {
         rna_hat[n] = safe_vl(piecewise(time[n], tp_rna, wp_rna, wr_rna, dp_rna, wf));
       }
+      real post_peak_n = (time[n] >= tp_rna) ? 1.0 : 0.0;
 
       // ---- PFU trajectory ----
       {
@@ -478,7 +505,7 @@ generated quantities {
       }
 
       // ---- LFD log-likelihood + posterior predictive ----
-      lfd_hat[n] = inv_logit(tau0_lfd_val + tau_lfd[1] * rna_hat[n] + tau_lfd[2] * pfu_hat[n]);
+      lfd_hat[n] = inv_logit(tau0_lfd_val + tau_lfd[1] * rna_hat[n] + tau_lfd[2] * pfu_hat[n] + tau_lfd[3] * post_peak_n + tau_lfd[4] * post_peak_n * rna_hat[n]);
       if (source_lfd) lfd_hat[n] = inv_logit(logit(lfd_hat[n]) + lfd_k[source[n]]);
       if (adj_lfd)    lfd_hat[n] = inv_logit(logit(lfd_hat[n]) + x[id[n], ] * beta_lfd);
 
@@ -492,20 +519,22 @@ generated quantities {
       // ---- Symptom log-likelihood + posterior predictive ----
       if (sym_exist[n] == 1 && sym_at_risk[n] == 1) {
         real u_sym_gq = sigma_sym * z_sym[id[n]];
-        real eta_lin_gq = eta_sym_intercept
-                         + eta_sym_pfu * (pfu_hat[n] / scale_vl)
-                         + eta_sym_rna * (rna_hat[n] / scale_vl)
+        real zeta_lin_gq = zeta_sym_intercept
+                         + zeta_sym_pfu * (pfu_hat[n] / scale_vl)
+                         + zeta_sym_rna * (rna_hat[n] / scale_vl)
+                         + zeta_sym_postpeak * post_peak_n
+                         + zeta_sym_postpeak_rna * post_peak_n * (rna_hat[n] / scale_vl)
                          + u_sym_gq;
-        if (source_sym) eta_lin_gq += to_k_sym[source[n]];
-        if (adj_sym)    eta_lin_gq += x[id[n], ] * beta_sym;
-        eta_lin_gq = fmin(eta_lin_gq, 10.0);
+        if (source_sym) zeta_lin_gq += to_k_sym[source[n]];
+        if (adj_sym)    zeta_lin_gq += x[id[n], ] * beta_sym;
+        zeta_lin_gq = fmin(zeta_lin_gq, 10.0);
 
         if (sym[n] == 1) {
-          log_lik[n] += log1m_exp(-exp(eta_lin_gq));
+          log_lik[n] += log1m_exp(-exp(zeta_lin_gq));
         } else {
-          log_lik[n] += -exp(eta_lin_gq);
+          log_lik[n] += -exp(zeta_lin_gq);
         }
-        real p_sym = 1 - exp(-exp(eta_lin_gq));
+        real p_sym = 1 - exp(-exp(zeta_lin_gq));
         sym_rep[n] = bernoulli_rng(p_sym);
       } else {
         sym_rep[n] = 0;

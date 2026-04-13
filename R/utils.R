@@ -73,6 +73,54 @@ traj_fun <- function(t, tp, wp, wr, dp, wf = 0, use_smooth = FALSE) {
   }
 }
 
+#' Derivative of piecewise-linear trajectory
+#'
+#' Returns dp/wp on the rising arm, 0 on the flat-top, -dp/wr on the
+#' falling arm.  Vectorized over t.
+#'
+#' @inheritParams pefun
+#' @return Time derivative of viral load (log-scale per day)
+pefun_deriv <- function(t, tp, wp, wr, dp, wf = 0) {
+  a <- dp / wp
+  b <- dp / wr
+  ifelse(t <= tp, a, ifelse(t <= tp + wf, 0, -b))
+}
+
+#' Derivative of smooth trajectory approximation
+#'
+#' Analytically differentiates smfun(), including the chain rule through
+#' the soft-cap at dp.  Matches the Stan smooth_deriv() function.
+#'
+#' @inheritParams smfun
+#' @return Time derivative of viral load (log-scale per day)
+smfun_deriv <- function(t, tp, wp, wr, dp, wf = 0) {
+  a <- dp / wp
+  b <- dp / wr
+  arg1 <- pmin(-a * (t - tp), 50)
+  arg2 <- pmin( b * (t - (tp + wf)), 50)
+  ea1 <- exp(arg1)
+  ea2 <- exp(arg2)
+  denom <- b * ea1 + a * ea2
+  # Raw derivative of the log-sum-exp envelope
+  draw_dt <- a * b * (ea1 - ea2) / denom
+  # Soft-cap correction: chain rule through log1p_exp(k*(raw-dp))/k
+  raw <- dp + log((a + b) / denom)
+  cap_factor <- 1 - plogis(10 * (raw - dp))
+  cap_factor * draw_dt
+}
+
+#' Trajectory derivative dispatcher
+#'
+#' @inheritParams traj_fun
+#' @return Time derivative of viral load (log-scale per day)
+traj_deriv <- function(t, tp, wp, wr, dp, wf = 0, use_smooth = FALSE) {
+  if (use_smooth) {
+    smfun_deriv(t, tp, wp, wr, dp, wf)
+  } else {
+    pefun_deriv(t, tp, wp, wr, dp, wf)
+  }
+}
+
 #' Repeat vector as rows of a matrix
 rep_row <- function(x, n) {
   matrix(rep(x, each = n), nrow = n)
@@ -167,4 +215,5 @@ logit <- function(x) log(x / (1 - x))
 rvar_pefun <- posterior::rfun(pefun)
 rvar_smfun <- posterior::rfun(smfun)
 rvar_traj_fun <- posterior::rfun(traj_fun)
+rvar_traj_deriv <- posterior::rfun(traj_deriv)
 rvar_calc_corners <- posterior::rfun(calc_corners)

@@ -371,22 +371,23 @@ compute_grid_summaries <- function(fit, pred_dat, stan_data, dt = 0.25,
 #'
 #' Uses the dense grid for smooth RNA/PFU lines and ribbons, and the
 #' observation-level data for data points, LFD tiles, and symptom markers.
+#' Styling matches panel_individual() from pub_figures.R (Figure 2).
 #'
 #' @param predictions  List with elements `obs` and `grid` (from compute_predictions)
 #' @param stan_data    Stan data list (for LODs and feature flags)
 #' @param source_id    Numeric source ID (1=NBA, 2=ATACCC, 3=UIUC, 4=HCT, 5=Legacy)
+#' @param style        Journal style for theme/colors (default "pnas")
 #' @return ggplot object
-plot_source_trajectories <- function(predictions, stan_data, source_id) {
+plot_source_trajectories <- function(predictions, stan_data, source_id,
+                                     style = "pnas") {
 
   obs  <- dplyr::filter(predictions$obs,  as.numeric(source) == source_id)
   grid <- dplyr::filter(predictions$grid, as.numeric(source) == source_id)
   if (nrow(obs) == 0) return(NULL)
 
-  # model type label for subtitle
-  model_label <- paste0(
-    if (isTRUE(stan_data$use_smooth == 1)) "smooth" else "piecewise",
-    if (isTRUE(stan_data$use_wf == 1)) " + flat-top" else ""
-  )
+  cols <- journal_colors(style)
+  source_labels <- c("1" = "NBA", "2" = "ATACCC", "3" = "UIUC",
+                      "4" = "HCT", "5" = "Legacy")
 
   lod_rna <- stan_data$lod_rna[source_id]
   lod_pfu <- stan_data$lod_pfu[source_id]
@@ -407,46 +408,97 @@ plot_source_trajectories <- function(predictions, stan_data, source_id) {
     grid$pfu_hat_q99_c <- clamp(grid$pfu_hat_q99, lod_pfu)
   }
 
-  # ---- y-axis limits for LFD / sym strip placement -----------------------
+  # ---- y-axis limits for LFD strip placement -----------------------------
   y_vals <- c(obs$rna, obs$pfu, grid$rna_hat_q99)
   if (has_pfu) y_vals <- c(y_vals, grid$pfu_hat_q99)
-  y_max <- max(y_vals, na.rm = TRUE) + 1
-
-  # LFD strip sits just above the data
-  lfd_lo <- y_max
-  lfd_hi <- y_max + 2
-  sym_y  <- lfd_hi + 1.5          # observed sym onset marker
+  y_max <- max(y_vals, na.rm = TRUE) + 0.5
 
   # ---- base plot ---------------------------------------------------------
   p <- ggplot2::ggplot(mapping = ggplot2::aes(x = time, group = factor(id)))
 
-  # ---- LFD rectangles (predicted probability) ----------------------------
-  if (has_lfd) {
-    lfd_dat <- dplyr::filter(obs, lfd_exist == 1, !is.na(lfd_hat))
+  # ---- RNA ribbon + line + points ----------------------------------------
+  rna_obs  <- dplyr::filter(obs, rna_exist == 1)
+  rna_grid <- dplyr::filter(grid, !is.na(rna_hat))
+  p <- p +
+    ggplot2::geom_ribbon(
+      ggplot2::aes(ymin = rna_hat_q1_c, ymax = rna_hat_q99_c),
+      data = rna_grid,
+      alpha = 0.15, fill = cols[["rna"]]
+    ) +
+    ggplot2::geom_line(
+      ggplot2::aes(y = rna_hat_c),
+      data = rna_grid,
+      color = cols[["rna"]], linewidth = 0.5
+    ) +
+    ggplot2::geom_point(
+      ggplot2::aes(y = rna),
+      data = rna_obs,
+      color = cols[["rna"]], shape = 16, size = 1.5, alpha = 0.8
+    )
+
+  # ---- LOD line(s) for RNA -----------------------------------------------
+  if (!is.na(lod_rna) && lod_rna > 0) {
     p <- p +
-      ggplot2::geom_rect(
-        ggplot2::aes(xmin = time - 0.4, xmax = time + 0.4,
-                     ymin = lfd_lo, ymax = lfd_hi,
-                     fill = lfd_hat),
-        data = lfd_dat
-      ) +
-      ggplot2::geom_text(
-        ggplot2::aes(x = time, y = sym_y,
-                     label = ifelse(lfd == 1, "X", "")),
-        data = lfd_dat,
-        color = "black", size = 2.5
-      ) +
-      colorspace::scale_fill_continuous_sequential(
-        name = "P(LFD +)",
-        palette = "Emrld",
-        rev = FALSE,
-        limits = c(0, 1)
-      )
+      ggplot2::geom_hline(yintercept = lod_rna, linetype = "dotted",
+                           color = cols[["rna"]], alpha = 0.5,
+                           linewidth = 0.3)
   }
 
-  # ---- Symptom onset markers ---------------------------------------------
+  # ---- PFU ribbon + line + points ----------------------------------------
+  if (has_pfu) {
+    pfu_obs  <- dplyr::filter(obs, pfu_exist == 1)
+    pfu_grid <- dplyr::filter(grid, !is.na(pfu_hat))
+    p <- p +
+      ggplot2::geom_ribbon(
+        ggplot2::aes(ymin = pfu_hat_q1_c, ymax = pfu_hat_q99_c),
+        data = pfu_grid,
+        alpha = 0.15, fill = cols[["pfu"]]
+      ) +
+      ggplot2::geom_line(
+        ggplot2::aes(y = pfu_hat_c),
+        data = pfu_grid,
+        color = cols[["pfu"]], linewidth = 0.5
+      ) +
+      ggplot2::geom_point(
+        ggplot2::aes(y = pfu),
+        data = pfu_obs,
+        color = cols[["pfu"]], shape = 17, size = 1.5, alpha = 0.8
+      )
+
+    # LOD line for PFU
+    if (!is.na(lod_pfu) && lod_pfu > 0) {
+      p <- p +
+        ggplot2::geom_hline(yintercept = lod_pfu, linetype = "dotted",
+                             color = cols[["pfu"]], alpha = 0.5,
+                             linewidth = 0.3)
+    }
+  }
+
+  # ---- LFD tiles (matching Figure 2 style) -------------------------------
+  if (has_lfd) {
+    lfd_dat <- dplyr::filter(obs, lfd_exist == 1, !is.na(lfd_hat))
+    if (nrow(lfd_dat) > 0) {
+      lfd_dat$lfd_y <- y_max + 0.8
+      p <- p +
+        ggplot2::geom_tile(
+          ggplot2::aes(y = lfd_y, fill = lfd_hat,
+                       width = 0.8, height = 1.0),
+          data = lfd_dat
+        ) +
+        ggplot2::geom_text(
+          ggplot2::aes(y = lfd_y,
+                       label = ifelse(lfd == 1, "+", "\u2013")),
+          data = lfd_dat, size = 2, color = "white", fontface = "bold"
+        ) +
+        colorspace::scale_fill_continuous_sequential(
+          name = "P(LFD+)", palette = "Greens 3",
+          rev = FALSE, limits = c(0, 1), guide = "none"
+        )
+    }
+  }
+
+  # ---- Symptom onset (dashed vertical line, matching Figure 2) -----------
   if (has_sym) {
-    # one row per person — onset time
     sym_dat <- obs |>
       dplyr::filter(sym_exist == 1) |>
       dplyr::group_by(id) |>
@@ -456,103 +508,30 @@ plot_source_trajectories <- function(predictions, stan_data, source_id) {
 
     if (nrow(sym_dat) > 0) {
       p <- p +
-        ggplot2::geom_point(
-          ggplot2::aes(x = sym_onset, y = sym_y + 1.0),
+        ggplot2::geom_vline(
+          ggplot2::aes(xintercept = sym_onset),
           data = sym_dat,
-          shape = 17, size = 2.5, color = "forestgreen"
+          linetype = "dashed", color = cols[["sym"]], alpha = 0.6,
+          linewidth = 0.3
         )
     }
   }
 
-  # ---- Symptom probability band ------------------------------------------
-  if ("sym_hat" %in% names(obs) && has_sym) {
-    p <- p +
-      ggplot2::geom_tile(
-        ggplot2::aes(x = time, y = sym_y + 1.0,
-                     width = 0.8, height = 1.5,
-                     alpha = sym_hat),
-        data = dplyr::filter(obs, sym_exist == 1, !is.na(sym_hat)),
-        fill = "forestgreen"
-      ) +
-      ggplot2::scale_alpha_continuous(
-        name = "P(sym)",
-        range = c(0, 0.6),
-        limits = c(0, 1)
-      )
-  }
-
-  # ---- RNA layer: dense grid line/ribbon + observation points (blue) ------
-  rna_col <- "#4ca5ff"
-  rna_obs <- dplyr::filter(obs, rna_exist == 1)
-  rna_grid <- dplyr::filter(grid, !is.na(rna_hat))
-  p <- p +
-    ggplot2::geom_ribbon(
-      ggplot2::aes(ymin = rna_hat_q1_c, ymax = rna_hat_q99_c),
-      data = rna_grid,
-      alpha = 0.20, fill = rna_col
-    ) +
-    ggplot2::geom_line(
-      ggplot2::aes(y = rna_hat_c),
-      data = rna_grid,
-      color = rna_col, linewidth = 0.4
-    ) +
-    ggplot2::geom_point(
-      ggplot2::aes(y = rna),
-      data = rna_obs,
-      color = rna_col, alpha = 0.75, shape = 16, size = 1
-    )
-
-  # ---- LOD line(s) for RNA -----------------------------------------------
-  if (!is.na(lod_rna) && lod_rna > 0) {
-    p <- p +
-      ggplot2::geom_hline(yintercept = lod_rna, linetype = "dashed",
-                           color = rna_col, alpha = 0.4)
-  }
-
-  # ---- PFU layer: dense grid line/ribbon + observation points (red) ------
-  if (has_pfu) {
-    pfu_col <- "red"
-    pfu_obs <- dplyr::filter(obs, pfu_exist == 1)
-    pfu_grid <- dplyr::filter(grid, !is.na(pfu_hat))
-    p <- p +
-      ggplot2::geom_ribbon(
-        ggplot2::aes(ymin = pfu_hat_q1_c, ymax = pfu_hat_q99_c),
-        data = pfu_grid,
-        alpha = 0.20, fill = pfu_col
-      ) +
-      ggplot2::geom_line(
-        ggplot2::aes(y = pfu_hat_c),
-        data = pfu_grid,
-        color = pfu_col, linewidth = 0.4
-      ) +
-      ggplot2::geom_point(
-        ggplot2::aes(y = pfu),
-        data = pfu_obs,
-        color = pfu_col, alpha = 0.5, shape = 16, size = 1
-      )
-
-    # LOD line for PFU
-    if (!is.na(lod_pfu) && lod_pfu > 0) {
-      p <- p +
-        ggplot2::geom_hline(yintercept = lod_pfu, linetype = "dashed",
-                             color = pfu_col, alpha = 0.4)
-    }
-  }
-
-  # ---- facets & theme ----------------------------------------------------
+  # ---- facets & theme (matching Figure 2 journal style) ------------------
   p <- p +
     ggplot2::facet_wrap(~ id) +
-    ggplot2::theme_minimal(base_size = 9) +
+    theme_journal(style, base_size = 7) +
     ggplot2::theme(
       legend.position  = "bottom",
       legend.direction = "horizontal",
-      strip.text       = ggplot2::element_text(size = 7)
+      strip.text       = ggplot2::element_text(size = ggplot2::rel(0.8))
     ) +
     ggplot2::labs(
-      x = "days from peak",
-      y = "log count per mL",
-      subtitle = model_label
-    )
+      x = "Days from peak",
+      y = "log copies/mL",
+      title = source_labels[as.character(source_id)]
+    ) +
+    ggplot2::coord_cartesian(clip = "off")
 
   p
 }
@@ -562,20 +541,24 @@ plot_source_trajectories <- function(predictions, stan_data, source_id) {
 #'
 #' One PDF per source, with RNA + PFU overlaid, LOD cutoffs, LFD heatmap,
 #' and symptom-onset markers. Uses dense grid for smooth fitted lines.
+#' Styling matches Figure 2 (panel_individual) from pub_figures.R.
 #'
 #' @param predictions  List with elements `obs` and `grid` (from compute_predictions)
 #' @param stan_data    Stan data list (for LODs and feature flags)
 #' @param out_dir      Output directory for figures
+#' @param style        Journal style for theme/colors (default "pnas")
 #' @return Character vector of saved file paths
 plot_all_trajectories <- function(predictions, stan_data,
-                                  out_dir = "output/figures") {
+                                  out_dir = "output/figures",
+                                  style = "pnas") {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
   source_names <- c("nba", "ataccc", "uiuc", "hct", "legacy")
   files <- c()
 
   for (i in seq_along(source_names)) {
-    p <- plot_source_trajectories(predictions, stan_data, source_id = i)
+    p <- plot_source_trajectories(predictions, stan_data, source_id = i,
+                                  style = style)
     if (is.null(p)) next
 
     out_file <- file.path(out_dir, paste0(source_names[i], "_fit.pdf"))
@@ -584,4 +567,34 @@ plot_all_trajectories <- function(predictions, stan_data,
   }
 
   files
+}
+
+
+#' Generate the inferred PFU figure (Figure 6)
+#'
+#' Produces a 3-row × 3-column figure comparing PFU inference quality
+#' across data regimes: ATACCC (PFU observed), NBA (RNA only), Legacy
+#' (RNA + symptoms). Requires fig_inferred_pfu() and panel_inferred_pfu()
+#' from pub_figures.R.
+#'
+#' @param predictions  List with obs and grid (from compute_predictions)
+#' @param stan_data    Stan data list (for LODs)
+#' @param out_dir      Output directory
+#' @param style        Journal style (default "pnas")
+#' @return Character path to saved PDF (for targets file tracking)
+plot_inferred_pfu <- function(predictions, stan_data,
+                               out_dir = "output/figures",
+                               style = "pnas") {
+  dir.create(file.path(out_dir, style), recursive = TRUE,
+             showWarnings = FALSE)
+
+  p <- fig_inferred_pfu(predictions, stan_data, style = style,
+                         ataccc_ids = c(1990, 1988, 1999),
+                         nba_ids    = c(776, 253, 1650),
+                         legacy_ids = c(2143, 2185, 2226))
+
+  out_file <- file.path(out_dir, style, "fig6_inferred_pfu.pdf")
+  ggplot2::ggsave(out_file, p, width = 14, height = 10, device = "pdf")
+
+  out_file
 }

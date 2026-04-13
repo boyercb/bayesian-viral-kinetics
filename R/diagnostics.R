@@ -291,22 +291,49 @@ posterior_predictive_check <- function(fit, stacked_dat) {
   rna_rep <- fit$draws("rna_rep", format = "draws_matrix")
   pfu_rep <- fit$draws("pfu_rep", format = "draws_matrix")
   lfd_rep <- fit$draws("lfd_rep", format = "draws_matrix")
+  sym_rep <- fit$draws("sym_rep", format = "draws_matrix")
+
+  # Cohort labels (source 1..5 → names)
+  cohort_names <- c("1" = "NBA", "2" = "ATACCC", "3" = "UIUC",
+                     "4" = "HCT", "5" = "Legacy")
+  cohort_vec <- cohort_names[as.character(stacked_dat$source)]
+
+  # Symptom at-risk mask: observations with symptom data where individual
+  # has not yet experienced symptom onset (discrete-time hazard structure)
+  sym_mask <- stacked_dat$sym_exist == 1 & stacked_dat$sym_at_risk == 1
+  sym_meta <- data.frame(
+    obs_idx  = which(sym_mask),
+    id       = stacked_dat$id[sym_mask],
+    time     = stacked_dat$time[sym_mask],
+    sym      = stacked_dat$sym[sym_mask],
+    sym_ever = stacked_dat$sym_ever[sym_mask],
+    cohort   = cohort_vec[sym_mask]
+  )
 
   list(
     rna = list(
-      y     = stacked_dat$rna[stacked_dat$rna_exist == 1],
-      y_rep = rna_rep[, stacked_dat$rna_exist == 1],
-      idx   = which(stacked_dat$rna_exist == 1)
+      y      = stacked_dat$rna[stacked_dat$rna_exist == 1],
+      y_rep  = rna_rep[, stacked_dat$rna_exist == 1],
+      idx    = which(stacked_dat$rna_exist == 1),
+      cohort = cohort_vec[stacked_dat$rna_exist == 1]
     ),
     pfu = list(
-      y     = stacked_dat$pfu[stacked_dat$pfu_exist == 1],
-      y_rep = pfu_rep[, stacked_dat$pfu_exist == 1],
-      idx   = which(stacked_dat$pfu_exist == 1)
+      y      = stacked_dat$pfu[stacked_dat$pfu_exist == 1],
+      y_rep  = pfu_rep[, stacked_dat$pfu_exist == 1],
+      idx    = which(stacked_dat$pfu_exist == 1),
+      cohort = cohort_vec[stacked_dat$pfu_exist == 1]
     ),
     lfd = list(
-      y     = stacked_dat$lfd[stacked_dat$lfd_exist == 1],
-      y_rep = lfd_rep[, stacked_dat$lfd_exist == 1],
-      idx   = which(stacked_dat$lfd_exist == 1)
+      y      = stacked_dat$lfd[stacked_dat$lfd_exist == 1],
+      y_rep  = lfd_rep[, stacked_dat$lfd_exist == 1],
+      idx    = which(stacked_dat$lfd_exist == 1),
+      cohort = cohort_vec[stacked_dat$lfd_exist == 1],
+      time   = stacked_dat$time[stacked_dat$lfd_exist == 1]
+    ),
+    sym = list(
+      y     = stacked_dat$sym[sym_mask],
+      y_rep = sym_rep[, sym_mask],
+      meta  = sym_meta
     )
   )
 }
@@ -324,7 +351,7 @@ plot_traces <- function(fit, params = NULL, stan_data = NULL, out_file = NULL) {
     params <- c("dp_mean_rna", "wp_mean_rna", "wr_mean_rna",
                 "sigma_rna", "sigma_pfu",
                 "tau_dp", "tau_wp",
-                "eta_sym_intercept")
+                "zeta_sym_intercept")
     if (!is.null(stan_data) && isTRUE(stan_data$use_wf == 1)) {
       params <- c(params, "wf_raw")
     }
@@ -333,7 +360,7 @@ plot_traces <- function(fit, params = NULL, stan_data = NULL, out_file = NULL) {
     }
   }
   draws <- fit$draws(variables = params)
-  p <- bayesplot::mcmc_trace(draws)
+  p <- bayesplot::mcmc_trace(draws) + theme_journal()
 
   if (!is.null(out_file)) {
     dir.create(dirname(out_file), showWarnings = FALSE, recursive = TRUE)
@@ -369,9 +396,11 @@ check_recovery <- function(fit, truth, stan_data = NULL, prob = 0.90) {
     wr_mean_rna       = "wr_mean_rna",
     sigma_rna         = "sigma_rna",
     sigma_pfu         = "sigma_pfu",
-    eta_sym_intercept = "eta_sym_intercept",
-    eta_sym_pfu       = "eta_sym_pfu",
-    eta_sym_rna       = "eta_sym_rna",
+    zeta_sym_intercept = "zeta_sym_intercept",
+    zeta_sym_pfu       = "zeta_sym_pfu",
+    zeta_sym_rna       = "zeta_sym_rna",
+    zeta_sym_postpeak  = "zeta_sym_postpeak",
+    zeta_sym_postpeak_rna = "zeta_sym_postpeak_rna",
     sigma_sym         = "sigma_sym",
     fp                = "fp",
     fn                = "fn"
@@ -553,6 +582,7 @@ plot_recovery <- function(recovery, out_file = NULL) {
   recovery$parameter <- factor(recovery$parameter,
                                 levels = rev(recovery$parameter))
 
+  cols <- journal_colors()
   p <- ggplot2::ggplot(recovery, ggplot2::aes(y = parameter)) +
     ggplot2::geom_pointrange(
       ggplot2::aes(
@@ -568,11 +598,11 @@ plot_recovery <- function(recovery, out_file = NULL) {
       shape = 4, size = 3, stroke = 1.2, color = "black"
     ) +
     ggplot2::scale_color_manual(
-      values = c("TRUE" = "steelblue", "FALSE" = "firebrick"),
+      values = c("TRUE" = cols$rna, "FALSE" = cols$pfu),
       labels = c("TRUE" = "Covered", "FALSE" = "Missed"),
       name   = "90% CI"
     ) +
-    ggplot2::theme_minimal(base_size = 13) +
+    theme_journal() +
     ggplot2::labs(
       x = "Parameter value",
       y = NULL,
@@ -623,6 +653,7 @@ plot_forest <- function(param_summary, out_file = NULL) {
                                       "Clearance rate"))
 
   # Significance flag: CI excludes 1
+  cols <- journal_colors()
   df$sig <- df$ci_lo > 1 | df$ci_hi < 1
 
   # Reverse label order for top-down reading
@@ -636,15 +667,14 @@ plot_forest <- function(param_summary, out_file = NULL) {
       size = 0.4
     ) +
     ggplot2::scale_color_manual(
-      values = c("TRUE" = "steelblue", "FALSE" = "grey60"),
+      values = c("TRUE" = cols$sig, "FALSE" = cols$nonsig),
       guide  = "none"
     ) +
     ggplot2::facet_wrap(~ param_label, ncol = 3) +
-    ggplot2::theme_minimal(base_size = 11) +
+    theme_journal() +
     ggplot2::theme(
-      panel.grid.minor = ggplot2::element_blank(),
-      strip.text       = ggplot2::element_text(face = "bold", size = 11),
-      axis.text.y      = ggplot2::element_text(size = 9)
+      strip.text  = ggplot2::element_text(face = "bold"),
+      axis.text.y = ggplot2::element_text(size = ggplot2::rel(0.9))
     ) +
     ggplot2::labs(
       x = "Multiplicative effect (95% CI)",
@@ -667,50 +697,66 @@ plot_forest <- function(param_summary, out_file = NULL) {
 #' Plots the observed RNA distribution against posterior predictive
 #' replications (semi-transparent density curves from draws).
 #'
-#' @param ppc      Output of \code{\link{posterior_predictive_check}}
-#' @param n_draws  Number of posterior draws to overlay (default 100)
-#' @param out_file Path to save PDF/PNG (NULL for interactive)
+#' @param ppc       Output of \code{\link{posterior_predictive_check}}
+#' @param n_draws   Number of posterior draws to overlay (default 100)
+#' @param by_cohort Logical; if TRUE, facet by cohort (default FALSE)
+#' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
-plot_ppc_rna <- function(ppc, n_draws = 100, out_file = NULL) {
+plot_ppc_rna <- function(ppc, n_draws = 100, by_cohort = FALSE,
+                         out_file = NULL) {
 
   y     <- ppc$rna$y
   y_rep <- as.matrix(ppc$rna$y_rep)
+  cohort <- ppc$rna$cohort
 
   # subsample draws for visual clarity
   draw_idx <- sample(nrow(y_rep), min(n_draws, nrow(y_rep)))
 
-  # build long-format data
-  obs_df <- data.frame(val = y, stringsAsFactors = FALSE)
+  # build long-format data with cohort
+  obs_df <- data.frame(val = y, cohort = cohort, stringsAsFactors = FALSE)
   rep_list <- lapply(draw_idx, function(i) {
-    data.frame(val  = as.numeric(y_rep[i, ]),
-               draw = as.character(i),
+    data.frame(val    = as.numeric(y_rep[i, ]),
+               draw   = as.character(i),
+               cohort = cohort,
                stringsAsFactors = FALSE)
   })
   rep_df <- do.call(rbind, rep_list)
+
+  # Order cohort factor
+  cohort_order <- c("NBA", "ATACCC", "UIUC", "HCT", "Legacy")
+  obs_df$cohort <- factor(obs_df$cohort, levels = cohort_order)
+  rep_df$cohort <- factor(rep_df$cohort, levels = cohort_order)
+
+  cols <- journal_colors()
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_density(
       data = rep_df,
       ggplot2::aes(x = val, group = draw),
-      color = "steelblue", alpha = 0.08, linewidth = 0.3
+      color = cols$rna, alpha = 0.08, linewidth = 0.3
     ) +
     ggplot2::geom_density(
       data = obs_df,
       ggplot2::aes(x = val),
       color = "black", linewidth = 0.8
     ) +
-    ggplot2::theme_minimal(base_size = 12) +
+    theme_journal() +
     ggplot2::labs(
       x = expression(log[10]~RNA~copies/mL),
-      y = "Density",
-      title = "Posterior predictive check: RNA",
-      subtitle = paste0("Black = observed; blue = ", length(draw_idx),
-                        " replicated datasets")
+      y = "Density"
     )
+
+  if (by_cohort) {
+    p <- p +
+      ggplot2::facet_wrap(~ cohort, scales = "free_y", nrow = 1)
+    w <- 14; h <- 4
+  } else {
+    w <- 7; h <- 5
+  }
 
   if (!is.null(out_file)) {
     dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-    ggplot2::ggsave(out_file, p, width = 7, height = 5)
+    ggplot2::ggsave(out_file, p, width = w, height = h)
     return(out_file)
   }
 
@@ -720,48 +766,64 @@ plot_ppc_rna <- function(ppc, n_draws = 100, out_file = NULL) {
 
 #' PPC density overlay for PFU observations
 #'
-#' @param ppc      Output of \code{\link{posterior_predictive_check}}
-#' @param n_draws  Number of posterior draws to overlay (default 100)
-#' @param out_file Path to save PDF/PNG (NULL for interactive)
+#' @param ppc       Output of \code{\link{posterior_predictive_check}}
+#' @param n_draws   Number of posterior draws to overlay (default 100)
+#' @param by_cohort Logical; if TRUE, facet by cohort (default FALSE)
+#' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
-plot_ppc_pfu <- function(ppc, n_draws = 100, out_file = NULL) {
+plot_ppc_pfu <- function(ppc, n_draws = 100, by_cohort = FALSE,
+                         out_file = NULL) {
 
   y     <- ppc$pfu$y
   y_rep <- as.matrix(ppc$pfu$y_rep)
+  cohort <- ppc$pfu$cohort
 
   draw_idx <- sample(nrow(y_rep), min(n_draws, nrow(y_rep)))
 
-  obs_df <- data.frame(val = y, stringsAsFactors = FALSE)
+  obs_df <- data.frame(val = y, cohort = cohort, stringsAsFactors = FALSE)
   rep_list <- lapply(draw_idx, function(i) {
-    data.frame(val  = as.numeric(y_rep[i, ]),
-               draw = as.character(i),
+    data.frame(val    = as.numeric(y_rep[i, ]),
+               draw   = as.character(i),
+               cohort = cohort,
                stringsAsFactors = FALSE)
   })
   rep_df <- do.call(rbind, rep_list)
+
+  # Only cohorts with PFU data
+  cohort_order <- c("ATACCC", "UIUC", "HCT")
+  obs_df$cohort <- factor(obs_df$cohort, levels = cohort_order)
+  rep_df$cohort <- factor(rep_df$cohort, levels = cohort_order)
+
+  cols <- journal_colors()
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_density(
       data = rep_df,
       ggplot2::aes(x = val, group = draw),
-      color = "firebrick", alpha = 0.08, linewidth = 0.3
+      color = cols$pfu, alpha = 0.08, linewidth = 0.3
     ) +
     ggplot2::geom_density(
       data = obs_df,
       ggplot2::aes(x = val),
       color = "black", linewidth = 0.8
     ) +
-    ggplot2::theme_minimal(base_size = 12) +
+    theme_journal() +
     ggplot2::labs(
       x = expression(log[10]~PFU/mL),
-      y = "Density",
-      title = "Posterior predictive check: PFU",
-      subtitle = paste0("Black = observed; red = ", length(draw_idx),
-                        " replicated datasets")
+      y = "Density"
     )
+
+  if (by_cohort) {
+    p <- p +
+      ggplot2::facet_wrap(~ cohort, scales = "free_y", nrow = 1)
+    w <- 10; h <- 4
+  } else {
+    w <- 7; h <- 5
+  }
 
   if (!is.null(out_file)) {
     dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-    ggplot2::ggsave(out_file, p, width = 7, height = 5)
+    ggplot2::ggsave(out_file, p, width = w, height = h)
     return(out_file)
   }
 
@@ -777,25 +839,50 @@ plot_ppc_pfu <- function(ppc, n_draws = 100, out_file = NULL) {
 #'
 #' @param ppc       Output of \code{\link{posterior_predictive_check}}
 #' @param n_bins    Number of probability bins (default 10)
+#' @param by_cohort Logical; if TRUE, facet by cohort (default FALSE)
+#' @param by_phase  Logical; if TRUE, facet by infection phase
+#'                  (pre-peak vs post-peak, based on time relative to
+#'                  observed RNA peak). Requires \code{ppc$lfd$time}.
 #' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
-plot_ppc_lfd <- function(ppc, n_bins = 10, out_file = NULL) {
+plot_ppc_lfd <- function(ppc, n_bins = 10, by_cohort = FALSE,
+                         by_phase = FALSE, out_file = NULL) {
 
   y     <- ppc$lfd$y
   y_rep <- as.matrix(ppc$lfd$y_rep)
+  cohort <- ppc$lfd$cohort
 
   # posterior mean predicted probability per observation
   p_hat <- colMeans(y_rep)
 
   calib_df <- data.frame(
-    y     = y,
-    p_hat = p_hat,
-    bin   = cut(p_hat, breaks = seq(0, 1, length.out = n_bins + 1),
-                include.lowest = TRUE)
+    y      = y,
+    p_hat  = p_hat,
+    cohort = cohort,
+    bin    = cut(p_hat, breaks = seq(0, 1, length.out = n_bins + 1),
+                 include.lowest = TRUE)
   )
 
+  # Only cohorts with LFD data
+  cohort_order <- c("ATACCC", "UIUC", "HCT")
+  calib_df$cohort <- factor(calib_df$cohort, levels = cohort_order)
+
+  # Infection phase relative to observed RNA peak
+  if (by_phase) {
+    stopifnot(!is.null(ppc$lfd$time))
+    calib_df$phase <- factor(
+      ifelse(ppc$lfd$time <= 0, "Pre-peak", "Post-peak"),
+      levels = c("Pre-peak", "Post-peak")
+    )
+  }
+
+  # Build grouping variables
+  grp_vars <- "bin"
+  if (by_cohort) grp_vars <- c("cohort", grp_vars)
+  if (by_phase)  grp_vars <- c(grp_vars, "phase")
+
   bin_summary <- calib_df |>
-    dplyr::group_by(bin) |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(grp_vars))) |>
     dplyr::summarise(
       mean_pred = mean(p_hat),
       obs_freq  = mean(y),
@@ -804,31 +891,311 @@ plot_ppc_lfd <- function(ppc, n_bins = 10, out_file = NULL) {
       .groups   = "drop"
     )
 
-  p <- ggplot2::ggplot(bin_summary,
-                       ggplot2::aes(x = mean_pred, y = obs_freq)) +
-    ggplot2::geom_abline(slope = 1, intercept = 0,
-                          linetype = "dashed", color = "grey50") +
-    ggplot2::geom_pointrange(
-      ggplot2::aes(ymin = pmax(obs_freq - 1.96 * se, 0),
-                    ymax = pmin(obs_freq + 1.96 * se, 1)),
-      size = 0.5, color = "darkgreen"
-    ) +
-    ggplot2::geom_text(
-      ggplot2::aes(label = n),
-      vjust = -1.2, size = 3, color = "grey40"
-    ) +
-    ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
-    ggplot2::theme_minimal(base_size = 12) +
-    ggplot2::labs(
-      x     = "Mean predicted P(LFD+)",
-      y     = "Observed LFD+ frequency",
-      title = "Calibration — LFD rapid test",
-      subtitle = "Numbers = observations per bin"
-    )
+  cols <- journal_colors()
+
+  if (by_phase && !by_cohort) {
+    p <- ggplot2::ggplot(bin_summary,
+                         ggplot2::aes(x = mean_pred, y = obs_freq,
+                                       color = phase)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0,
+                            linetype = "dashed", color = "grey50") +
+      ggplot2::geom_pointrange(
+        ggplot2::aes(ymin = pmax(obs_freq - 1.96 * se, 0),
+                      ymax = pmin(obs_freq + 1.96 * se, 1)),
+        size = 0.5, position = ggplot2::position_dodge(width = 0.03)
+      ) +
+      ggplot2::geom_text(
+        ggplot2::aes(label = n),
+        vjust = -1.2, size = 2.5, color = "grey40",
+        position = ggplot2::position_dodge(width = 0.03)
+      ) +
+      ggplot2::scale_color_manual(
+        values = c("Pre-peak" = unname(cols["pfu"]), "Post-peak" = unname(cols["lfd"])),
+        name = "Infection phase"
+      ) +
+      ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+      theme_journal() +
+      ggplot2::labs(
+        x     = "Mean predicted P(LFD+)",
+        y     = "Observed LFD+ frequency"
+      )
+    w <- 7; h <- 6
+  } else if (by_phase && by_cohort) {
+    p <- ggplot2::ggplot(bin_summary,
+                         ggplot2::aes(x = mean_pred, y = obs_freq,
+                                       color = phase)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0,
+                            linetype = "dashed", color = "grey50") +
+      ggplot2::geom_pointrange(
+        ggplot2::aes(ymin = pmax(obs_freq - 1.96 * se, 0),
+                      ymax = pmin(obs_freq + 1.96 * se, 1)),
+        size = 0.5, position = ggplot2::position_dodge(width = 0.03)
+      ) +
+      ggplot2::scale_color_manual(
+        values = c("Pre-peak" = unname(cols["pfu"]), "Post-peak" = unname(cols["lfd"])),
+        name = "Infection phase"
+      ) +
+      ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+      ggplot2::facet_wrap(~ cohort, nrow = 1) +
+      theme_journal() +
+      ggplot2::labs(
+        x     = "Mean predicted P(LFD+)",
+        y     = "Observed LFD+ frequency"
+      )
+    w <- 14; h <- 5
+  } else {
+    p <- ggplot2::ggplot(bin_summary,
+                         ggplot2::aes(x = mean_pred, y = obs_freq)) +
+      ggplot2::geom_abline(slope = 1, intercept = 0,
+                            linetype = "dashed", color = "grey50") +
+      ggplot2::geom_pointrange(
+        ggplot2::aes(ymin = pmax(obs_freq - 1.96 * se, 0),
+                      ymax = pmin(obs_freq + 1.96 * se, 1)),
+        size = 0.5, color = unname(cols["lfd"])
+      ) +
+      ggplot2::geom_text(
+        ggplot2::aes(label = n),
+        vjust = -1.2, size = 2.5, color = "grey40"
+      ) +
+      ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+      theme_journal() +
+      ggplot2::labs(
+        x     = "Mean predicted P(LFD+)",
+        y     = "Observed LFD+ frequency"
+      )
+
+    if (by_cohort) {
+      p <- p +
+        ggplot2::facet_wrap(~ cohort, nrow = 1)
+      w <- 14; h <- 5
+    } else {
+      w <- 6; h <- 6
+    }
+  }
 
   if (!is.null(out_file)) {
     dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-    ggplot2::ggsave(out_file, p, width = 6, height = 6)
+    ggplot2::ggsave(out_file, p, width = w, height = h)
+    return(out_file)
+  }
+
+  invisible(p)
+}
+
+
+#' Compute Kaplan--Meier cumulative incidence from event times
+#'
+#' Simple KM estimator for discrete event times. Returns a data frame
+#' with columns \code{time} and \code{cum_inc} (= 1 - S(t)).
+#'
+#' @param event_time Numeric vector of event/censoring times
+#' @param event      Integer vector: 1 = event, 0 = censored
+#' @return Data frame with columns: time, n_risk, n_event, surv, cum_inc
+#' @keywords internal
+compute_km <- function(event_time, event) {
+  n <- length(event_time)
+  # unique sorted times where events or censorings occur
+  utimes <- sort(unique(event_time))
+
+  km <- data.frame(time = utimes, n_risk = 0L, n_event = 0L)
+
+  for (i in seq_along(utimes)) {
+    t <- utimes[i]
+    km$n_risk[i]  <- sum(event_time >= t)
+    km$n_event[i] <- sum(event_time == t & event == 1)
+  }
+  km$surv <- cumprod(1 - km$n_event / km$n_risk)
+  km$cum_inc <- 1 - km$surv
+
+  # prepend a row just before the first event with full risk set
+  t0 <- min(utimes) - 1
+  rbind(data.frame(time = t0, n_risk = n, n_event = 0L,
+                   surv = 1, cum_inc = 0), km)
+}
+
+
+#' PPC cumulative incidence plot for symptom onset (discrete-time hazard)
+#'
+#' Compares the observed Kaplan--Meier cumulative incidence of symptom
+#' onset to replicated cumulative incidence curves from the posterior
+#' predictive distribution. For each posterior draw, symptom onset is
+#' simulated by identifying the first at-risk day where the Bernoulli
+#' replicate \code{sym_rep} equals 1.
+#'
+#' @param ppc       Output of \code{\link{posterior_predictive_check}}
+#' @param n_draws   Number of posterior draws to overlay (default 200)
+#' @param by_cohort Logical; if TRUE, facet by cohort (default FALSE)
+#' @param out_file  Path to save PDF/PNG (NULL for interactive)
+#' @return ggplot object or file path
+plot_ppc_sym <- function(ppc, n_draws = 200, by_cohort = FALSE,
+                         out_file = NULL) {
+
+  meta  <- ppc$sym$meta
+  y_rep <- as.matrix(ppc$sym$y_rep)
+
+  # Cohorts with symptom data
+  cohort_order <- c("ATACCC", "UIUC", "HCT", "Legacy")
+
+  # ---- Helper: compute KM for a subset ----
+  .compute_obs_km <- function(m) {
+    m |>
+      dplyr::group_by(id) |>
+      dplyr::summarise(
+        onset_time = ifelse(any(sym == 1),
+                            min(time[sym == 1]),
+                            max(time)),
+        event = as.integer(any(sym == 1)),
+        .groups = "drop"
+      ) |>
+      (\(d) compute_km(d$onset_time, d$event))()
+  }
+
+  .compute_rep_km <- function(m, y_rep_mat, draw_idx) {
+    lapply(draw_idx, function(d) {
+      md <- m
+      md$sym_sim <- as.integer(y_rep_mat[d, ])
+      sim_by_id <- md |>
+        dplyr::group_by(id) |>
+        dplyr::summarise(
+          onset_time = ifelse(any(sym_sim == 1),
+                              min(time[sym_sim == 1]),
+                              max(time)),
+          event = as.integer(any(sym_sim == 1)),
+          .groups = "drop"
+        )
+      km <- compute_km(sim_by_id$onset_time, sim_by_id$event)
+      km$draw <- as.character(d)
+      km
+    }) |> do.call(rbind, args = _)
+  }
+
+  draw_idx <- sample(nrow(y_rep), min(n_draws, nrow(y_rep)))
+  cols <- journal_colors()
+
+  if (by_cohort) {
+    # ---- Faceted version: one panel per cohort ----
+    cohorts_present <- intersect(cohort_order, unique(meta$cohort))
+
+    all_obs <- list(); all_rep <- list(); all_band <- list()
+    for (co in cohorts_present) {
+      mask <- meta$cohort == co
+      if (sum(mask) == 0) next
+      m_co <- meta[mask, ]
+      yr_co <- y_rep[, mask, drop = FALSE]
+
+      obs_km <- .compute_obs_km(m_co)
+      obs_km$cohort <- co
+      all_obs[[co]] <- obs_km
+
+      rep_km <- .compute_rep_km(m_co, yr_co, draw_idx)
+      rep_km$cohort <- co
+      all_rep[[co]] <- rep_km
+
+      band <- rep_km |>
+        dplyr::group_by(time) |>
+        dplyr::summarise(
+          ci_lo = stats::quantile(cum_inc, 0.025),
+          ci_hi = stats::quantile(cum_inc, 0.975),
+          ci_med = stats::median(cum_inc),
+          .groups = "drop"
+        )
+      band$cohort <- co
+      all_band[[co]] <- band
+    }
+
+    obs_df  <- do.call(rbind, all_obs)
+    rep_df  <- do.call(rbind, all_rep)
+    band_df <- do.call(rbind, all_band)
+
+    obs_df$cohort  <- factor(obs_df$cohort, levels = cohort_order)
+    rep_df$cohort  <- factor(rep_df$cohort, levels = cohort_order)
+    band_df$cohort <- factor(band_df$cohort, levels = cohort_order)
+
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_ribbon(
+        data = band_df,
+        ggplot2::aes(x = time, ymin = ci_lo, ymax = ci_hi),
+        fill = cols$sym, alpha = 0.25
+      ) +
+      ggplot2::geom_step(
+        data = rep_df,
+        ggplot2::aes(x = time, y = cum_inc, group = draw),
+        color = cols$sym, alpha = 0.04, linewidth = 0.3
+      ) +
+      ggplot2::geom_step(
+        data = band_df,
+        ggplot2::aes(x = time, y = ci_med),
+        color = cols$sym, linewidth = 0.6, linetype = "dashed"
+      ) +
+      ggplot2::geom_step(
+        data = obs_df,
+        ggplot2::aes(x = time, y = cum_inc),
+        color = "black", linewidth = 0.8
+      ) +
+      ggplot2::facet_wrap(~ cohort, nrow = 1) +
+      ggplot2::scale_y_continuous(
+        labels = scales::percent_format(),
+        limits = c(0, 1),
+        expand = c(0, 0)
+      ) +
+      theme_journal() +
+      ggplot2::labs(
+        x = "Days since estimated infection",
+        y = "Cumulative incidence of symptom onset"
+      )
+    w <- 14; h <- 4
+
+  } else {
+    # ---- Aggregate version ----
+    obs_km <- .compute_obs_km(meta)
+    rep_df <- .compute_rep_km(meta, y_rep, draw_idx)
+
+    band_df <- rep_df |>
+      dplyr::group_by(time) |>
+      dplyr::summarise(
+        ci_lo = stats::quantile(cum_inc, 0.025),
+        ci_hi = stats::quantile(cum_inc, 0.975),
+        ci_med = stats::median(cum_inc),
+        .groups = "drop"
+      )
+
+    p <- ggplot2::ggplot() +
+      ggplot2::geom_ribbon(
+        data = band_df,
+        ggplot2::aes(x = time, ymin = ci_lo, ymax = ci_hi),
+        fill = cols$sym, alpha = 0.25
+      ) +
+      ggplot2::geom_step(
+        data = rep_df,
+        ggplot2::aes(x = time, y = cum_inc, group = draw),
+        color = cols$sym, alpha = 0.04, linewidth = 0.3
+      ) +
+      ggplot2::geom_step(
+        data = band_df,
+        ggplot2::aes(x = time, y = ci_med),
+        color = cols$sym, linewidth = 0.6, linetype = "dashed"
+      ) +
+      ggplot2::geom_step(
+        data = obs_km,
+        ggplot2::aes(x = time, y = cum_inc),
+        color = "black", linewidth = 0.8
+      ) +
+      ggplot2::scale_y_continuous(
+        labels = scales::percent_format(),
+        limits = c(0, 1),
+        expand = c(0, 0)
+      ) +
+      theme_journal() +
+      ggplot2::labs(
+        x = "Days since estimated infection",
+        y = "Cumulative incidence of symptom onset"
+      )
+    w <- 7; h <- 5
+  }
+
+  if (!is.null(out_file)) {
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    ggplot2::ggsave(out_file, p, width = w, height = h)
     return(out_file)
   }
 
@@ -903,29 +1270,59 @@ plot_diagnostics <- function(param_summary, ppc, convergence,
                    out_file = file.path(out_dir, "forest_covariates.pdf"))
   files <- c(files, f)
 
-  # 2. PPC — RNA
-  f <- plot_ppc_rna(ppc,
+  # 2. PPC — RNA (aggregate)
+  f <- plot_ppc_rna(ppc, by_cohort = FALSE,
                     out_file = file.path(out_dir, "ppc_rna.pdf"))
   files <- c(files, f)
 
-  # 3. PPC — PFU
-  f <- plot_ppc_pfu(ppc,
+  # 2b. PPC — RNA (by cohort)
+  f <- plot_ppc_rna(ppc, by_cohort = TRUE,
+                    out_file = file.path(out_dir, "ppc_rna_cohort.pdf"))
+  files <- c(files, f)
+
+  # 3. PPC — PFU (aggregate)
+  f <- plot_ppc_pfu(ppc, by_cohort = FALSE,
                     out_file = file.path(out_dir, "ppc_pfu.pdf"))
   files <- c(files, f)
 
-  # 4. PPC — LFD calibration
-  f <- plot_ppc_lfd(ppc,
+  # 3b. PPC — PFU (by cohort)
+  f <- plot_ppc_pfu(ppc, by_cohort = TRUE,
+                    out_file = file.path(out_dir, "ppc_pfu_cohort.pdf"))
+  files <- c(files, f)
+
+  # 4. PPC — LFD calibration (aggregate)
+  f <- plot_ppc_lfd(ppc, by_cohort = FALSE,
                     out_file = file.path(out_dir, "ppc_lfd_calibration.pdf"))
   files <- c(files, f)
 
-  # 5. Convergence table
+  # 4b. PPC — LFD calibration (by cohort)
+  f <- plot_ppc_lfd(ppc, by_cohort = TRUE,
+                    out_file = file.path(out_dir, "ppc_lfd_calibration_cohort.pdf"))
+  files <- c(files, f)
+
+  # 4c. PPC — LFD calibration (pre-peak vs post-peak)
+  f <- plot_ppc_lfd(ppc, by_phase = TRUE,
+                    out_file = file.path(out_dir, "ppc_lfd_calibration_phase.pdf"))
+  files <- c(files, f)
+
+  # 5. PPC — Symptom onset (aggregate)
+  f <- plot_ppc_sym(ppc, by_cohort = FALSE,
+                    out_file = file.path(out_dir, "ppc_sym.pdf"))
+  files <- c(files, f)
+
+  # 5b. PPC — Symptom onset (by cohort)
+  f <- plot_ppc_sym(ppc, by_cohort = TRUE,
+                    out_file = file.path(out_dir, "ppc_sym_cohort.pdf"))
+  files <- c(files, f)
+
+  # 6. Convergence table
   f <- save_convergence_table(convergence,
                               out_file = file.path(dirname(out_dir),
                                                     "tables",
                                                     "convergence.tex"))
   files <- c(files, f)
 
-  # 6. Parameter recovery (if available)
+  # 7. Parameter recovery (if available)
   if (!is.null(recovery_check)) {
     f <- plot_recovery(recovery_check,
                        out_file = file.path(out_dir, "param_recovery.pdf"))
@@ -1066,7 +1463,7 @@ plot_correlation_matrix <- function(fit, stan_data, prob = 0.90,
                                 Omega[RNA])),
       x = NULL, y = NULL
     ) +
-    ggplot2::theme_minimal(base_size = 12) +
+    theme_journal() +
     ggplot2::coord_equal()
 
   if (!is.null(out_file)) {
@@ -1103,7 +1500,7 @@ plot_correlation_densities <- function(fit, stan_data, out_file = NULL) {
     prob = 0.9
   ) +
     ggplot2::ggtitle("RNA individual-effect SDs") +
-    ggplot2::theme_minimal(base_size = 11)
+    theme_journal()
 
   # --- Omega_rna off-diagonal correlation densities ---
   pairs <- list(c(1,2), c(1,3), c(1,4), c(2,3), c(2,4), c(3,4))
@@ -1117,7 +1514,7 @@ plot_correlation_densities <- function(fit, stan_data, out_file = NULL) {
   ) +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
     ggplot2::ggtitle("RNA individual-effect correlations") +
-    ggplot2::theme_minimal(base_size = 11)
+    theme_journal()
 
   p <- patchwork::wrap_plots(p_sigma, p_corr, ncol = 1)
 
