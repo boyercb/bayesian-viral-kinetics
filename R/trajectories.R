@@ -174,6 +174,7 @@ sample_trajectories <- function(
   has_wf      <- as.logical(stan_data$use_wf)
   prior_i_sd  <- stan_data$prior_i_sd
   scale_vl    <- stan_data$prior_dp_mean
+  kappa_pp    <- stan_data$kappa_postpeak
 
   # ── Variables to extract from posterior ────────────────────────────────────
   vars <- c(
@@ -427,7 +428,7 @@ sample_trajectories <- function(
       w  <- i1:i2;  nw <- length(w)
 
       # ── LFD probability ───────────────────────────────────────────────────
-      post_peak_w <- as.numeric(t_grid[w] >= tp_rna)
+      post_peak_w <- soft_postpeak(t_grid[w], tp_rna, kappa_pp)
       lfd_p <- expit(lfd0 + lfd_c[1] * rna[w] + lfd_c[2] * pfu[w]
                      + lfd_pp * post_peak_w + lfd_ppr * post_peak_w * rna[w])
 

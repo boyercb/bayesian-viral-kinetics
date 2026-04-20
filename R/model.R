@@ -675,8 +675,9 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
 
   # --- LFD probability -----------------------------------------------------
   # Stan: tau0_lfd (transformed param), tau_lfd (vector[4])
-  # Indicator interaction: post-peak indicator allows different intercept+slope
-  post_peak <- (t >= tp_rna) * 1  # rvar: 1 if past individual peak, 0 otherwise
+  # Smooth sigmoid: matches inv_logit(kappa * (t - tp)) in Stan
+  kappa_pp <- stan_data$kappa_postpeak
+  post_peak <- soft_postpeak(t, tp_rna, kappa_pp)
   lfd_hat <- expit(k$tau0_lfd +
                      k$tau_lfd[1] * rna_hat +
                      k$tau_lfd[2] * pfu_hat +
@@ -694,7 +695,7 @@ predict_kinetics <- function(fit, newdata, stan_data, max_draws = 1000) {
   # --- Symptom onset hazard (cloglog) ---------------------------------------
   # Normalise viral load by prior_dp_mean (matches Stan's scale_vl)
   scale_vl <- stan_data$prior_dp_mean
-  post_peak <- (t >= tp_rna) * 1
+  # post_peak reused from LFD block (same smooth sigmoid)
   u_sym   <- k$sigma_sym * k$z_sym[id]
   zeta_lin <- k$zeta_sym_intercept +
     k$zeta_sym_pfu * (pfu_hat / scale_vl) +
@@ -1007,8 +1008,8 @@ prior_predictive <- function(data, draws = 10) {
     pfu_hat[, d][!is.finite(pfu_hat[, d])] <- 0
     lfd_hat[, d] <- plogis(tau0_lfd[d] + tau_lfd[d, 1] * rna_hat[, d] +
                              tau_lfd[d, 2] * pfu_hat[, d] +
-                             tau_lfd[d, 3] * as.numeric(data$time >= tp_rna[data$id, d]) +
-                             tau_lfd[d, 4] * as.numeric(data$time >= tp_rna[data$id, d]) * rna_hat[, d])
+                             tau_lfd[d, 3] * soft_postpeak(data$time, tp_rna[data$id, d], data$kappa_postpeak) +
+                             tau_lfd[d, 4] * soft_postpeak(data$time, tp_rna[data$id, d], data$kappa_postpeak) * rna_hat[, d])
 
     if (data$source_lfd) {
       lfd_hat[, d] <- plogis(qlogis(lfd_hat[, d]) + lfd_k[data$source, d])
@@ -1052,7 +1053,7 @@ prior_predictive <- function(data, draws = 10) {
   scale_vl <- data$prior_dp_mean
 
   for (d in seq_len(draws)) {
-    post_peak_pp <- as.numeric(data$time >= tp_rna[data$id, d])
+    post_peak_pp <- soft_postpeak(data$time, tp_rna[data$id, d], data$kappa_postpeak)
     zeta_lin <- zeta_sym_intercept[d] +
       zeta_sym_pfu[d] * (pfu_hat[, d] / scale_vl) +
       zeta_sym_rna[d] * (rna_hat[, d] / scale_vl) +
@@ -1425,7 +1426,7 @@ simulate_data <- function(data, params = NULL, seed = 42) {
   pfu_hat <- pmax(pmin(pfu_hat, 50), -50)
 
   # LFD probability
-  post_peak_st <- as.numeric(data$time >= tp_rna_ind[id])
+  post_peak_st <- soft_postpeak(data$time, tp_rna_ind[id], data$kappa_postpeak)
   lfd_logit <- params$tau0_lfd +
     params$tau_lfd[1] * rna_hat +
     params$tau_lfd[2] * pfu_hat +
@@ -1443,7 +1444,7 @@ simulate_data <- function(data, params = NULL, seed = 42) {
 
   # Symptom hazard (cloglog) — normalise by prior_dp_mean (matches Stan)
   scale_vl <- data$prior_dp_mean
-  post_peak_st <- as.numeric(data$time >= tp_rna_ind[id])
+  # post_peak_st reused from LFD block (same smooth sigmoid)
   u_sym <- params$sigma_sym * z_sym[id]
   zeta_lin <- params$zeta_sym_intercept +
     params$zeta_sym_pfu * (pfu_hat / scale_vl) +

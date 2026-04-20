@@ -683,7 +683,11 @@ build_stan_data <- function(stacked_dat, flags = list()) {
     prior_i_sd     = 1,
     prior_pfu_i_sd = 0.3,  # tighter prior for PFU RE SDs
     prior_k_sd     = 1,
-    prior_lfd_mean = 0.01
+    prior_lfd_mean = 0.01,
+
+    # Smooth post-peak sigmoid steepness: inv_logit(kappa * (t - tp)).
+    # kappa=5 ≈ transition over ~1 day (biologically reasonable).
+    kappa_postpeak = 5.0
   )
 
   # grainsize for reduce_sum — 1 lets Stan auto-schedule slice sizes.

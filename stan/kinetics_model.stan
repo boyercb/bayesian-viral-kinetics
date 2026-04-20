@@ -206,7 +206,8 @@ functions {
     int source_rna,  int source_pfu,  int source_lfd,  int source_sym,
     int adj_rna,     int adj_pfu,     int adj_lfd,     int adj_sym,
     int test_error,  int use_wf,      int use_smooth,
-    real scale_vl
+    real scale_vl,
+    real kappa_pp     // steepness for smooth post-peak sigmoid
   ) {
     real ll = 0.0;
     for (n in 1:size(id_slice)) {
@@ -256,8 +257,8 @@ functions {
         rna_hat_n = safe_vl(piecewise(time_obs[nn], tp_rna, wp_rna, wr_rna, dp_rna, wf));
       }
 
-      // ── Post-peak indicator (for LFD phase asymmetry) ─────────────────────
-      real post_peak_n = (time_obs[nn] >= tp_rna) ? 1.0 : 0.0;
+      // ── Post-peak indicator (smooth sigmoid for HMC differentiability) ────
+      real post_peak_n = inv_logit(kappa_pp * (time_obs[nn] - tp_rna));
 
       // ── PFU trajectory ───────────────────────────────────────────────────
       // PFU REs only exist for PFU-informed individuals (pidx > 0).
@@ -481,6 +482,12 @@ data {
   real<lower=0> prior_wf_mean;  // prior mean for flat-top duration (days)
   real<lower=0> prior_wf_cv;    // prior CV for flat-top duration (NCP scale)
 
+  // Steepness for smooth post-peak sigmoid: inv_logit(kappa * (t - tp)).
+  // Replaces the hard indicator I(t >= tp) with a differentiable
+  // approximation so HMC can propagate gradients through tp.
+  // kappa ~ 5 ≈ transition over ~1 day; kappa ~ 10 ≈ ~0.5 day.
+  real<lower=0> kappa_postpeak;
+
 }
 
 transformed data {
@@ -690,7 +697,8 @@ transformed parameters {
     source_rna, source_pfu, source_lfd, source_sym,
     adj_rna, adj_pfu, adj_lfd, adj_sym,
     test_error, use_wf, use_smooth,
-    scale_vl
+    scale_vl,
+    kappa_postpeak
   );
 }
 

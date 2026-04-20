@@ -625,7 +625,7 @@ extract_pop_draws <- function(fit, n_draws = 200, out_path = NULL) {
   pfu <- pmin(pfu, rna)           # PFU ≤ RNA constraint
 
   # LFD probability: inv_logit(tau0_lfd + tau_lfd[1]*rna + tau_lfd[2]*pfu + tau_lfd[3]*post_peak + tau_lfd[4]*post_peak*rna)
-  post_peak <- as.numeric(t >= tp_rna)
+  post_peak <- soft_postpeak(t, tp_rna)
   lfd_logit <- pars["tau0_lfd"] +
     pars["tau_lfd[1]"] * rna +
     pars["tau_lfd[2]"] * pfu +
@@ -683,7 +683,7 @@ extract_pop_draws <- function(fit, n_draws = 200, out_path = NULL) {
   pfu <- pmin(pfu, rna)
 
   # LFD probability
-  post_peak <- as.numeric(t >= tp_rna)
+  post_peak <- soft_postpeak(t, tp_rna)
   lfd_logit <- pars["tau0_lfd"] +
     pars["tau_lfd[1]"] * rna +
     pars["tau_lfd[2]"] * pfu +

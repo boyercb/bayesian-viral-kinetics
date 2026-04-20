@@ -69,7 +69,7 @@
     \begin{figure}[p]
         \centering
         \includegraphics[width=\linewidth]{\suppfigpath/prior_sym.pdf}
-        \caption[Prior predictive: symptom onset model]{Prior predictive check for the discrete-time cloglog symptom onset model. Prior draws of the daily hazard of symptom onset as a function of days since infection, illustrating the range of onset timing and cumulative incidence curves consistent with the prior specification. The prior intercept is centered at $\zeta_0 = -3$ (corresponding to a ${\sim}5\%$ baseline daily hazard), with positive viral load effects $\zeta_1, \zeta_2 \sim N^+(0, 0.5)$ and post-peak indicator coefficients $\zeta_3, \zeta_4 \sim N(0, 1)$.}
+        \caption[Prior predictive: symptom onset model]{Prior predictive check for the discrete-time cloglog symptom onset model. Prior draws of the daily hazard of symptom onset as a function of days since infection, illustrating the range of onset timing and cumulative incidence curves consistent with the prior specification. The prior intercept is centered at $\zeta_0 = -3$ (corresponding to a ${\sim}5\%$ baseline daily hazard), with positive viral load effects $\zeta_1, \zeta_2 \sim N^+(0, 0.5)$ and post-peak sigmoid coefficients $\zeta_3, \zeta_4 \sim N(0, 1)$.}
         \label{fig:prior_sym}
     \end{figure}
 
@@ -294,7 +294,7 @@
 
     \subsection{Observation model parameters}
 
-    Tables~\ref{tab:lfd} and~\ref{tab:symptom} report the posterior estimates of the LFD and symptom onset observation model parameters, respectively. Both models include post-peak indicator interaction terms that allow the relationship between viral load and the outcome to differ between the proliferation and clearance phases: the LFD model uses a logistic link (Section~3.3 of the main text) and the symptom model uses a discrete-time complementary log-log hazard (Section~3.5).
+    Tables~\ref{tab:lfd} and~\ref{tab:symptom} report the posterior estimates of the LFD and symptom onset observation model parameters, respectively. Both models include smooth post-peak sigmoid interaction terms that allow the relationship between viral load and the outcome to differ between the proliferation and clearance phases: the LFD model uses a logistic link (Section~3.3 of the main text) and the symptom model uses a discrete-time complementary log-log hazard (Section~3.5).
 
     \input{../../output/tables/supp_lfd.tex}
     \input{../../output/tables/supp_symptom.tex}
@@ -432,20 +432,20 @@ Lateral flow devices detect viral nucleocapsid protein (antigen), whose concentr
 \end{equation*}
 The ratio $A_t / V_t$ is not constant over the infection. On the rising arm, $A_t / V_t \approx \alpha_1 / (\alpha_2 + a)$; on the falling arm, $A_t / V_t \approx \alpha_1 / (\alpha_2 - b) + \text{memory term}$. Since $\alpha_2 + a > \alpha_2 - b$ (assuming $a, b > 0$ and $\alpha_2 > b$), the antigen-to-virus ratio is lower during proliferation than during clearance. This means that at a given viral load, antigen concentration is lower pre-peak than post-peak---the proliferation--clearance asymmetry that motivates the model extension.
 
-\subsection{Adopted approach: post-peak indicator interaction}
+\subsection{Adopted approach: smooth post-peak sigmoid interaction}
 
-The LFD observation model uses a post-peak indicator interaction to allow the relationship between viral load and LFD sensitivity to differ between the rising and falling phases of infection:
+The LFD observation model uses a smooth sigmoid interaction to allow the relationship between viral load and LFD sensitivity to differ between the rising and falling phases of infection:
 \begin{equation*}
-    \text{logit}\,P(L_t^* = 1) = \gamma_0 + \gamma_1 \log R_t + \gamma_2 \log V_t + \gamma_3 \mathbbm{1}(t \geq t_p) + \gamma_4 \mathbbm{1}(t \geq t_p) \log R_t
+    \text{logit}\,P(L_t^* = 1) = \gamma_0 + \gamma_1 \log R_t + \gamma_2 \log V_t + \gamma_3 \,\sigma_\kappa(t - t_p) + \gamma_4 \,\sigma_\kappa(t - t_p) \log R_t
 \end{equation*}
-where $t_p$ is the individual's estimated RNA peak time. The effective model for LFD sensitivity is:
+where $t_p$ is the individual's estimated RNA peak time and $\sigma_\kappa(x) = \text{logit}^{-1}(\kappa x)$ is a smooth sigmoid with steepness $\kappa$ (fixed at 5, giving a transition width of approximately one day). The effective model for LFD sensitivity is approximately:
 \begin{equation*}
-    \text{logit}\,P(L_t^* = 1) = \begin{cases}
+    \text{logit}\,P(L_t^* = 1) \approx \begin{cases}
         \gamma_0 + \gamma_1 \log R_t + \gamma_2 \log V_t & \text{pre-peak} \\
         (\gamma_0 + \gamma_3) + (\gamma_1 + \gamma_4) \log R_t + \gamma_2 \log V_t & \text{post-peak}
     \end{cases}
 \end{equation*}
-This is a natural extension of the regression framework already used throughout the model. It requires no additional functions or numerical computation: the peak time $t_p$ is already estimated for each individual as part of the RNA trajectory. The discontinuity at the peak is negligible in practice because LFD sensitivity is near its maximum at peak viral load, and the binary outcome (positive/negative) makes the logistic probability nearly indistinguishable on either side of the peak.
+This is a natural extension of the regression framework already used throughout the model. It requires no additional functions or numerical computation: the peak time $t_p$ is already estimated for each individual as part of the RNA trajectory. Because $t_p$ is a latent parameter estimated jointly with all other model parameters via Hamiltonian Monte Carlo, the smooth sigmoid is preferred over a hard indicator $\mathbbm{1}(t \geq t_p)$: the latter creates a discontinuity that zeroes out the gradient with respect to $t_p$, impeding the leapfrog integrator. With $\kappa = 5$, the sigmoid transitions from 0.01 to 0.99 over approximately one day, which is both biologically reasonable (the switch from proliferation to clearance is not instantaneous) and numerically well-behaved. Near the peak, LFD sensitivity is close to its maximum, so the precise transition shape is inconsequential for the binary LFD outcome.
 
 \subsection{Alternative approaches considered}
 
@@ -474,7 +474,7 @@ Discontinuity at peak & No & No & Yes\textsuperscript{b} & No \\
 
 \paragraph{Log-affine antigen layer.} One could add a second log-affine transformation mapping PFU parameters to antigen parameters, producing a piecewise exponential antigen trajectory with 8 additional parameters. This approximates the convolution well in the tails but misses the post-peak shoulder. More importantly, with only binary LFD outcomes (no quantitative antigen measurements), the 8 additional parameters would be poorly identified.
 
-\paragraph{Derivative-based approach.} An alternative to the indicator interaction is to replace $\gamma_3 \mathbbm{1}(t \geq t_p) + \gamma_4 \mathbbm{1}(t \geq t_p) \log R_t$ with a single term $\gamma_3 \dot{g}_s(t)$, where $\dot{g}_s(t)$ is the time derivative of the smooth log-RNA trajectory. The derivative transitions smoothly from positive values during proliferation through zero at the peak to negative values during clearance, providing a continuous phase indicator with a single parameter. However, as a first-order correction that is additive in the logit, the derivative term cannot modulate the \emph{slope} of LFD sensitivity with respect to viral load---it only shifts the intercept. The indicator interaction, while discontinuous, is more flexible and fits naturally within the regression-based framework used throughout the model.
+\paragraph{Derivative-based approach.} An alternative to the sigmoid interaction is to replace $\gamma_3 \,\sigma_\kappa(t - t_p) + \gamma_4 \,\sigma_\kappa(t - t_p) \log R_t$ with a single term $\gamma_3 \dot{g}_s(t)$, where $\dot{g}_s(t)$ is the time derivative of the smooth log-RNA trajectory. The derivative transitions smoothly from positive values during proliferation through zero at the peak to negative values during clearance, providing a continuous phase indicator with a single parameter. However, as a first-order correction that is additive in the logit, the derivative term cannot modulate the \emph{slope} of LFD sensitivity with respect to viral load---it only shifts the intercept. The sigmoid interaction is more flexible and fits naturally within the regression-based framework used throughout the model.
 
 \subsection{Derivative of the smooth trajectory}
 

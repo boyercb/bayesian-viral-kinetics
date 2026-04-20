@@ -211,6 +211,15 @@ expit <- function(x) exp(x) / (1 + exp(x))
 #' Logit
 logit <- function(x) log(x / (1 - x))
 
+#' Smooth post-peak sigmoid: differentiable replacement for I(t >= tp)
+#' @param t     Time (scalar or vector)
+#' @param tp    Peak time (scalar or vector, recycled)
+#' @param kappa Steepness (default 5; higher = sharper transition)
+#' @return Values in (0,1), ≈0 before tp, ≈1 after tp
+soft_postpeak <- function(t, tp, kappa = 5) {
+  1 / (1 + exp(-kappa * (t - tp)))
+}
+
 # rvars-compatible wrappers (for posterior package)
 rvar_pefun <- posterior::rfun(pefun)
 rvar_smfun <- posterior::rfun(smfun)

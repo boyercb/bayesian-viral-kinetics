@@ -178,6 +178,8 @@ data {
   real<lower=0> prior_wf_mean;
   real<lower=0> prior_wf_cv;
 
+  real<lower=0> kappa_postpeak;
+
 }
 
 transformed data {
@@ -387,7 +389,7 @@ generated quantities {
       } else {
         rna_hat[n] = safe_vl(piecewise(time[n], tp_rna, wp_rna, wr_rna, dp_rna, wf));
       }
-      real post_peak_n = (time[n] >= tp_rna) ? 1.0 : 0.0;
+      real post_peak_n = inv_logit(kappa_postpeak * (time[n] - tp_rna));
 
       // ---- PFU trajectory ----
       {
