@@ -366,6 +366,14 @@ plot_antigen_schematic <- function(style = NULL) {
   fit_ind <- lm.fit(X_ind, log_A_conv)
   log_A_ind <- X_ind %*% fit_ind$coefficients
 
+  # Sigmoid model: gamma_1 + gamma_2 * g(t) + gamma_3 * sigma_k(t - tp) + gamma_4 * sigma_k(t - tp) * g(t)
+  # Smooth sigmoid approximation to the indicator (kappa = 5)
+  kappa <- 5
+  sig_pp <- soft_postpeak(t_grid, tp, kappa)
+  X_sig <- cbind(1, g, sig_pp, sig_pp * g)
+  fit_sig <- lm.fit(X_sig, log_A_conv)
+  log_A_sig <- X_sig %*% fit_sig$coefficients
+
   # Build data frames
   df_a <- data.frame(t = t_grid, g = g)
   df_b <- data.frame(t = t_grid, dg = dg,
@@ -376,9 +384,9 @@ plot_antigen_schematic <- function(style = NULL) {
     curve = rep(c("Viral load", "Antigen"), each = length(t_grid))
   )
   df_d <- data.frame(
-    t = rep(t_grid, 4),
-    value = c(log_A_conv, log_A_logaffine, log_A_deriv, log_A_ind),
-    curve = rep(c("Convolution", "Log-affine", "Derivative", "Indicator"),
+    t = rep(t_grid, 5),
+    value = c(log_A_conv, log_A_logaffine, log_A_deriv, log_A_ind, log_A_sig),
+    curve = rep(c("Convolution", "Log-affine", "Derivative", "Indicator", "Sigmoid"),
                 each = length(t_grid))
   )
 
@@ -429,12 +437,14 @@ plot_antigen_schematic <- function(style = NULL) {
     scale_color_manual(values = c("Convolution" = "black",
                                    "Log-affine" = unname(cols["rna"]),
                                    "Derivative" = unname(cols["pfu"]),
-                                   "Indicator" = unname(cols["lfd"])),
+                                   "Indicator" = unname(cols["lfd"]),
+                                   "Sigmoid" = unname(cols["accent"])),
                         name = NULL) +
     scale_linetype_manual(values = c("Convolution" = "solid",
                                       "Log-affine" = "dashed",
                                       "Derivative" = "dotted",
-                                      "Indicator" = "twodash"),
+                                      "Indicator" = "twodash",
+                                      "Sigmoid" = "longdash"),
                            name = NULL) +
     labs(x = "Days since infection", y = "log(Antigen)",
          title = "(d) Approximations") +
