@@ -220,7 +220,7 @@ list(
     format = "file"
   ),
   tar_target(
-    fig_inferred_pfu,
+    fig_inferred_pfu_plot,
     plot_inferred_pfu(predictions, stan_data),
     format = "file"
   ),
