@@ -392,7 +392,7 @@ plot_antigen_schematic <- function(style = NULL) {
 
   # Panel (a): trajectory
   pa <- ggplot(df_a, aes(t, g)) +
-    geom_line(linewidth = 0.8, color = unname(cols["rna"])) +
+    geom_line(linewidth = 0.8, color = cols[["rna"]]) +
     labs(x = "Days since infection", y = expression(g[s](t) ~ "(log copies/mL)"),
          title = "(a) Smooth trajectory") +
     theme_journal(style)
@@ -401,9 +401,9 @@ plot_antigen_schematic <- function(style = NULL) {
   df_b_pos <- df_b[df_b$dg >= 0, ]
   df_b_neg <- df_b[df_b$dg < 0, ]
   pb <- ggplot(df_b, aes(t, dg)) +
-    geom_area(data = df_b_pos, aes(t, dg), fill = unname(cols["rna"]),
+    geom_area(data = df_b_pos, aes(t, dg), fill = cols[["rna"]],
               alpha = 0.25) +
-    geom_area(data = df_b_neg, aes(t, dg), fill = unname(cols["pfu"]),
+    geom_area(data = df_b_neg, aes(t, dg), fill = cols[["pfu"]],
               alpha = 0.25) +
     geom_line(linewidth = 0.8) +
     geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
@@ -419,8 +419,8 @@ plot_antigen_schematic <- function(style = NULL) {
   # Panel (c): antigen vs virus (normalized)
   pc <- ggplot(df_c, aes(t, value, color = curve, linetype = curve)) +
     geom_line(linewidth = 0.8) +
-    scale_color_manual(values = c("Viral load" = unname(cols["pfu"]),
-                                   "Antigen" = unname(cols["lfd"])),
+    scale_color_manual(values = c("Viral load" = cols[["pfu"]],
+                                   "Antigen" = cols[["lfd"]]),
                         name = NULL) +
     scale_linetype_manual(values = c("Viral load" = "dashed",
                                       "Antigen" = "solid"),
@@ -435,10 +435,10 @@ plot_antigen_schematic <- function(style = NULL) {
   pd <- ggplot(df_d, aes(t, value, color = curve, linetype = curve)) +
     geom_line(linewidth = 0.8) +
     scale_color_manual(values = c("Convolution" = "black",
-                                   "Log-affine" = unname(cols["rna"]),
-                                   "Derivative" = unname(cols["pfu"]),
-                                   "Indicator" = unname(cols["lfd"]),
-                                   "Sigmoid" = unname(cols["accent"])),
+                                   "Log-affine" = cols[["rna"]],
+                                   "Derivative" = cols[["pfu"]],
+                                   "Indicator" = cols[["lfd"]],
+                                   "Sigmoid" = cols[["accent"]]),
                         name = NULL) +
     scale_linetype_manual(values = c("Convolution" = "solid",
                                       "Log-affine" = "dashed",
