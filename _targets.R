@@ -328,6 +328,21 @@ list(
   )),
 
   tar_target(
+    tex_manuscript_numbers,
+    save_manuscript_macros(
+      convergence = convergence,
+      loo_result = loo_result,
+      waic_result = waic_result,
+      recovery_check = recovery_check,
+      param_summary = param_summary,
+      kinetics_mcmc = kinetics_mcmc,
+      stacked_dat = stacked_dat,
+      out_file = "output/tables/manuscript_numbers.tex"
+    ),
+    format = "file"
+  ),
+
+  tar_target(
     fig_recovery,
     plot_recovery(recovery_check,
                   out_file = "output/figures/param_recovery.pdf"),
