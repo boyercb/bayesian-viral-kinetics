@@ -4,7 +4,7 @@
 # Usage:
 #   set_journal("pnas")       # switches theme globally
 #   p + theme_journal()       # applies current journal theme
-#   journal_colors()          # returns named color vector
+#   journal_colors()          # returns named color list
 #   save_journal_figure(p, "fig1", width = 7, height = 5)
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -130,7 +130,7 @@ theme_journal <- function(style = NULL, base_size = NULL) {
 
 #' Journal-specific color palette
 #'
-#' Returns a named character vector with role-based colors.
+#' Returns a named list of colors with role-based names.
 #'
 #' @param style Override active journal (NULL = use set_journal())
 #' @return Named list: rna, pfu, lfd, sym, sig, nonsig, accent, muted
@@ -139,7 +139,7 @@ journal_colors <- function(style = NULL) {
   if (is.null(style)) style <- "pnas"   # sensible default
 
   if (style == "pnas") {
-    c(
+    list(
       rna     = "#3C78D8",    # steel blue
       pfu     = "#CC3333",    # muted red
       lfd     = "#6AA84F",    # sage green
@@ -151,7 +151,7 @@ journal_colors <- function(style = NULL) {
       ci_fill = "#3C78D820"   # transparent blue
     )
   } else if (style == "plos") {
-    c(
+    list(
       rna     = "#0072B2",    # accessible blue
       pfu     = "#D55E00",    # vermillion
       lfd     = "#009E73",    # teal
@@ -163,7 +163,7 @@ journal_colors <- function(style = NULL) {
       ci_fill = "#0072B220"
     )
   } else if (style == "annals") {
-    c(
+    list(
       rna     = "#1F77B4",    # tableau blue
       pfu     = "#D62728",    # tableau red
       lfd     = "#2CA02C",    # tableau green
