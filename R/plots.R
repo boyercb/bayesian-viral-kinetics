@@ -455,3 +455,31 @@ plot_antigen_schematic <- function(style = NULL) {
   # Combine
   (pa | pb) / (pc | pd)
 }
+
+
+#' Save antigen schematic in one or more journal styles
+#'
+#' @param styles Character vector of journal styles
+#' @param out_dir Output directory for figures
+#' @return Character vector of saved file paths
+save_antigen_schematic <- function(styles = c("pnas"),
+                                   out_dir = "output/figures") {
+  all_paths <- character(0)
+
+  for (s in styles) {
+    set_journal(s)
+    p <- plot_antigen_schematic(style = s)
+    paths <- save_journal_figure(
+      p,
+      name = "antigen_schematic",
+      layout = "full",
+      width = 12,
+      height = 7,
+      out_dir = out_dir,
+      style = s
+    )
+    all_paths <- c(all_paths, paths)
+  }
+
+  unname(all_paths)
+}

@@ -1266,6 +1266,79 @@ fig_correlation_matrix <- function(param_summary, style = "pnas") {
 }
 
 
+#' Generate main-text publication figures from existing targets objects
+#'
+#' Target-friendly wrapper that generates Figures 2--6 for the requested
+#' journal styles without reading targets cache from disk.
+#'
+#' @param predictions   Output of \code{compute_predictions()}
+#' @param param_summary Output of \code{summarize_parameters()}
+#' @param stan_data     Stan data list
+#' @param pop_draws_df  Data frame of population draws (e.g., from
+#'   \code{extract_pop_draws()})
+#' @param styles        Character vector of styles to generate
+#' @param out_dir       Output directory
+#' @return Character vector of saved file paths
+generate_pub_figures <- function(predictions,
+                                 param_summary,
+                                 stan_data,
+                                 pop_draws_df,
+                                 styles = c("pnas"),
+                                 out_dir = "output/figures") {
+
+  predictions$obs <- flatten_mat_cols(predictions$obs)
+
+  tmp_draws <- tempfile(pattern = "pop_draws_", fileext = ".rds")
+  saveRDS(pop_draws_df, tmp_draws)
+  on.exit(unlink(tmp_draws), add = TRUE)
+
+  all_paths <- character(0)
+  for (s in styles) {
+    message(sprintf("Generating publication figures for style: %s", s))
+    set_journal(s)
+
+    p2 <- fig_example_trajectories(predictions, stan_data, style = s)
+    paths2 <- save_journal_figure(
+      p2, "fig2_trajectories", layout = "full",
+      width = 14, height = 8, out_dir = out_dir, style = s
+    )
+
+    p3 <- fig_population_trajectories(
+      stan_data,
+      draws_path = tmp_draws,
+      style = s,
+      n_spaghetti = min(200, nrow(pop_draws_df))
+    )
+    paths3 <- save_journal_figure(
+      p3, "fig3_population", layout = "full",
+      width = 14, height = 6, out_dir = out_dir, style = s
+    )
+
+    p4 <- fig_forest_covariates(param_summary, style = s)
+    paths4 <- save_journal_figure(
+      p4, "fig4_forest", layout = "full",
+      width = 10, height = 5, out_dir = out_dir, style = s
+    )
+
+    p5 <- fig_correlation_matrix(param_summary, style = s)
+    paths5 <- save_journal_figure(
+      p5, "fig5_correlations", layout = "full",
+      width = 10, height = 5, out_dir = out_dir, style = s
+    )
+
+    p6 <- fig_inferred_pfu(predictions, stan_data, style = s)
+    paths6 <- save_journal_figure(
+      p6, "fig6_inferred_pfu", layout = "full",
+      width = 14, height = 10, out_dir = out_dir, style = s
+    )
+
+    all_paths <- c(all_paths, paths2, paths3, paths4, paths5, paths6)
+  }
+
+  unname(all_paths)
+}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SCRIPT EXECUTION — only when run directly (Rscript R/pub_figures.R [style])
 # Guarded so tar_source("R/") does not trigger figure generation at load time.

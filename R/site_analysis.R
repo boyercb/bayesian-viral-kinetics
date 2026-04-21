@@ -269,3 +269,36 @@ run_site_analysis <- function(out_dir = "output/figures") {
   message("Saved: ", paste(paths, collapse = ", "))
   invisible(paths)
 }
+
+
+#' Generate site analysis figures in one or more journal styles
+#'
+#' @param styles Character vector of journal styles
+#' @param out_dir Output directory for figures
+#' @param hct_path Path to HCT data CSV
+#' @param pids_panel_a Integer vector of participant IDs for panel A
+#' @return Character vector of saved file paths
+generate_site_analysis_figures <- function(styles = c("pnas"),
+                                           out_dir = "output/figures",
+                                           hct_path = "data/hct_dat.csv",
+                                           pids_panel_a = c(1, 5, 7)) {
+  all_paths <- character(0)
+
+  for (s in styles) {
+    p <- plot_site_comparison(
+      hct_path = hct_path,
+      pids_panel_a = pids_panel_a,
+      style = s
+    )
+    paths <- save_journal_figure(
+      p,
+      "figS_site_comparison",
+      layout = "full",
+      out_dir = out_dir,
+      style = s
+    )
+    all_paths <- c(all_paths, paths)
+  }
+
+  unname(all_paths)
+}

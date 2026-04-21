@@ -270,6 +270,30 @@ list(
 
   tar_target(fig_ode, plot_ode_examples(), format = "file"),
 
+  tar_target(
+    fig_pub_main,
+    generate_pub_figures(
+      predictions = predictions,
+      param_summary = param_summary,
+      stan_data = stan_data,
+      pop_draws_df = pop_draws,
+      styles = c("pnas")
+    ),
+    format = "file"
+  ),
+
+  tar_target(
+    fig_antigen_schematic,
+    save_antigen_schematic(styles = c("pnas")),
+    format = "file"
+  ),
+
+  tar_target(
+    fig_site_analysis,
+    generate_site_analysis_figures(styles = c("pnas")),
+    format = "file"
+  ),
+
 
   # ── Parameter recovery (simulated-data identifiability check) ──────────────
   #
