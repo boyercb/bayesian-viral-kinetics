@@ -287,14 +287,14 @@ save_manuscript_macros <- function(convergence,
     macro("CovOmicronWRLo", fmt_num(c_omic_wr["lo"], 2)),
     macro("CovOmicronWRHi", fmt_num(c_omic_wr["hi"], 2)),
     macro("CovOmicronWRPctDown", fmt_int(pct_down(c_omic_wr["est"]))),
-    macro("CovBA45DP", fmt_num(c_ba_dp["est"], 2)),
-    macro("CovBA45DPLo", fmt_num(c_ba_dp["lo"], 2)),
-    macro("CovBA45DPHi", fmt_num(c_ba_dp["hi"], 2)),
-    macro("CovBA45DPPctUp", fmt_int(pct_up(c_ba_dp["est"]))),
-    macro("CovBA45WR", fmt_num(c_ba_wr["est"], 2)),
-    macro("CovBA45WRLo", fmt_num(c_ba_wr["lo"], 2)),
-    macro("CovBA45WRHi", fmt_num(c_ba_wr["hi"], 2)),
-    macro("CovBA45WRPctDown", fmt_int(pct_down(c_ba_wr["est"]))),
+    macro("CovBAFourFiveDP", fmt_num(c_ba_dp["est"], 2)),
+    macro("CovBAFourFiveDPLo", fmt_num(c_ba_dp["lo"], 2)),
+    macro("CovBAFourFiveDPHi", fmt_num(c_ba_dp["hi"], 2)),
+    macro("CovBAFourFiveDPPctUp", fmt_int(pct_up(c_ba_dp["est"]))),
+    macro("CovBAFourFiveWR", fmt_num(c_ba_wr["est"], 2)),
+    macro("CovBAFourFiveWRLo", fmt_num(c_ba_wr["lo"], 2)),
+    macro("CovBAFourFiveWRHi", fmt_num(c_ba_wr["hi"], 2)),
+    macro("CovBAFourFiveWRPctDown", fmt_int(pct_down(c_ba_wr["est"]))),
     macro("CovAlphaWP", fmt_num(c_alpha_wp["est"], 2)),
     macro("CovAlphaWPLo", fmt_num(c_alpha_wp["lo"], 2)),
     macro("CovAlphaWPHi", fmt_num(c_alpha_wp["hi"], 2)),
@@ -323,10 +323,10 @@ save_manuscript_macros <- function(convergence,
     macro("CovVaxWRLo", fmt_num(c_vax_wr["lo"], 2)),
     macro("CovVaxWRHi", fmt_num(c_vax_wr["hi"], 2)),
     macro("CovVaxWRPctDown", fmt_int(pct_down(c_vax_wr["est"]))),
-    macro("CovAge50WR", fmt_num(c_age50_wr["est"], 2)),
-    macro("CovAge50WRLo", fmt_num(c_age50_wr["lo"], 2)),
-    macro("CovAge50WRHi", fmt_num(c_age50_wr["hi"], 2)),
-    macro("CovAge50WRPctUp", fmt_int(pct_up(c_age50_wr["est"]))),
+    macro("CovAgeFiftyPlusWR", fmt_num(c_age50_wr["est"], 2)),
+    macro("CovAgeFiftyPlusWRLo", fmt_num(c_age50_wr["lo"], 2)),
+    macro("CovAgeFiftyPlusWRHi", fmt_num(c_age50_wr["hi"], 2)),
+    macro("CovAgeFiftyPlusWRPctUp", fmt_int(pct_up(c_age50_wr["est"]))),
     macro("CovRecDP", fmt_num(c_rec_dp["est"], 2)),
     macro("CovRecDPLo", fmt_num(c_rec_dp["lo"], 2)),
     macro("CovRecDPHi", fmt_num(c_rec_dp["hi"], 2)),
@@ -344,10 +344,10 @@ save_manuscript_macros <- function(convergence,
   )
 
   if (length(ebfmi_vals) > 0 && all(is.finite(ebfmi_vals))) {
-    lines <- sub("\\\\providecommand\\{\\\\MCEBFMIMin\\}\\{NA\\}",
-      macro("MCEBFMIMin", fmt_num(min(ebfmi_vals), 2)), lines)
-    lines <- sub("\\\\providecommand\\{\\\\MCEBFMIMax\\}\\{NA\\}",
-      macro("MCEBFMIMax", fmt_num(max(ebfmi_vals), 2)), lines)
+    lines <- sub("\\providecommand{\\MCEBFMIMin}{NA}",
+      macro("MCEBFMIMin", fmt_num(min(ebfmi_vals), 2)), lines, fixed = TRUE)
+    lines <- sub("\\providecommand{\\MCEBFMIMax}{NA}",
+      macro("MCEBFMIMax", fmt_num(max(ebfmi_vals), 2)), lines, fixed = TRUE)
   }
 
   writeLines(lines, out_file)

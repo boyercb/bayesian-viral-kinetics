@@ -6,7 +6,7 @@
 \newcommand{\suppprefix}{S}
 % Figure path: change to point to journal-specific directory when using
 % save_journal_figure() output (e.g., "../../output/figures/pnas")
-\newcommand{\suppfigpath}{../../output/figures}
+\newcommand{\suppfigpath}{../../output/figures/pnas}
 % Page numbering: set to 0 to restart, or comment out to continue from main text
 \setcounter{page}{0}
 
@@ -307,7 +307,7 @@
     \begin{landscape}
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{\suppfigpath/pnas/figS_stratified_curves.pdf}
+        \includegraphics[width=\linewidth]{\suppfigpath/figS_stratified_curves.pdf}
         \caption[Stratified probability curves]{Probability of remaining culture-positive \textbf{(A)} and LFD-positive \textbf{(B)} as a function of days since first positive PCR test, stratified by covariate profile. Points show posterior median probabilities at each integer day; vertical bars show 95\% credible intervals. Profiles are horizontally dodged for readability. The Reinfection profile clears fastest, consistent with anamnestic immunity accelerating viral clearance. The Boosted + Omicron (2022) profile shows the most prolonged culture positivity, reflecting the longer proliferation phase associated with both vaccination and Omicron. Culture and LFD positivity curves track each other closely across profiles, supporting the use of LFD as a proxy for infectious status regardless of covariate profile.}
         \label{fig:strat_curves}
     \end{figure}
@@ -321,7 +321,7 @@
     \begin{landscape}
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{\suppfigpath/pnas/fig8_conditional_symptom.pdf}
+        \includegraphics[width=\linewidth]{\suppfigpath/fig8_conditional_symptom.pdf}
         \caption[Conditional culture positivity by LFD outcome and symptom onset]{Probability of remaining culture-positive conditional on lateral flow device (LFD) test outcomes, as a function of days since symptom onset, for three representative covariate profiles. Points show posterior medians; vertical bars show 95\% credible intervals. Three conditions are compared: LFD positive (red), single LFD negative (blue), and two consecutive LFD negatives --- current day plus preceding day (green). Two consecutive negative results provide substantially greater reassurance than a single negative, particularly in the day 5--10 window where the single-negative false reassurance rate remains appreciable. Dashed vertical lines indicate days 5 and 10.}
         \label{fig:conditional_symptom}
     \end{figure}
@@ -393,7 +393,7 @@
 
     \begin{figure}[p]
         \centering
-        \includegraphics[width=\linewidth]{\suppfigpath/pnas/figS_site_comparison.pdf}
+        \includegraphics[width=\linewidth]{\suppfigpath/figS_site_comparison.pdf}
         \caption[Site-specific RNA trajectories in the HCT cohort]{\textbf{(A)} Nasal (blue) and throat (red) RNA concentration data (points) for three representative participants in the SARS-CoV-2 Human Challenge Study, with the arithmetic mean used in the current model shown as crosses. Smooth curves show smoothed piecewise exponential fits to each series independently: solid blue (nose), solid red (throat), dashed grey (average), and solid orange (PFU). Orange triangles show PFU measurements from throat-only viral culture. The two anatomical sites exhibit distinct kinetic profiles, with the nasal site often reaching higher peak concentrations and the PFU trajectory aligning more closely with the throat RNA than with the averaged signal. The current model's averaging obscures these site-specific differences. \textbf{(B)} Population-level median (shaded IQR) difference $\log(\text{RNA}_{\text{nose}}) - \log(\text{RNA}_{\text{throat}})$ across all HCT participants as a function of days since first positive test. The difference is not constant over time, supporting a model with site-specific kinetic offsets rather than a simple multiplicative correction. Bins with fewer than three observations are excluded.}
         \label{fig:site_comparison}
     \end{figure}

@@ -346,7 +346,8 @@ posterior_predictive_check <- function(fit, stacked_dat) {
 #' @param stan_data Stan data list (optional; used to include wf_raw when use_wf=1)
 #' @param out_file  Path to save the PDF (or NULL for interactive)
 #' @return File path (character) if out_file is specified; ggplot otherwise
-plot_traces <- function(fit, params = NULL, stan_data = NULL, out_file = NULL) {
+plot_traces <- function(fit, params = NULL, stan_data = NULL,
+                        out_file = NULL, style = NULL) {
   if (is.null(params)) {
     params <- c("dp_mean_rna", "wp_mean_rna", "wr_mean_rna",
                 "sigma_rna", "sigma_pfu",
@@ -360,7 +361,7 @@ plot_traces <- function(fit, params = NULL, stan_data = NULL, out_file = NULL) {
     }
   }
   draws <- fit$draws(variables = params)
-  p <- bayesplot::mcmc_trace(draws) + theme_journal()
+  p <- bayesplot::mcmc_trace(draws) + theme_journal(style)
 
   if (!is.null(out_file)) {
     dir.create(dirname(out_file), showWarnings = FALSE, recursive = TRUE)
@@ -577,12 +578,12 @@ check_recovery <- function(fit, truth, stan_data = NULL, prob = 0.90) {
 #' @param recovery  Tibble from \code{\link{check_recovery}}
 #' @param out_file  Path to save the PDF (or NULL for interactive)
 #' @return ggplot object (invisible)
-plot_recovery <- function(recovery, out_file = NULL) {
+plot_recovery <- function(recovery, out_file = NULL, style = NULL) {
 
   recovery$parameter <- factor(recovery$parameter,
                                 levels = rev(recovery$parameter))
 
-  cols <- journal_colors()
+  cols <- journal_colors(style)
   p <- ggplot2::ggplot(recovery, ggplot2::aes(y = parameter)) +
     ggplot2::geom_pointrange(
       ggplot2::aes(
@@ -602,7 +603,7 @@ plot_recovery <- function(recovery, out_file = NULL) {
       labels = c("TRUE" = "Covered", "FALSE" = "Missed"),
       name   = "90% CI"
     ) +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::labs(
       x = "Parameter value",
       y = NULL,
@@ -633,7 +634,7 @@ plot_recovery <- function(recovery, out_file = NULL) {
 #' @param param_summary Output of \code{\link{summarize_parameters}}
 #' @param out_file      Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
-plot_forest <- function(param_summary, out_file = NULL) {
+plot_forest <- function(param_summary, out_file = NULL, style = NULL) {
 
   df <- param_summary$covariate_effects
   df$coef  <- as.numeric(df$coef)
@@ -653,7 +654,7 @@ plot_forest <- function(param_summary, out_file = NULL) {
                                       "Clearance rate"))
 
   # Significance flag: CI excludes 1
-  cols <- journal_colors()
+  cols <- journal_colors(style)
   df$sig <- df$ci_lo > 1 | df$ci_hi < 1
 
   # Reverse label order for top-down reading
@@ -671,7 +672,7 @@ plot_forest <- function(param_summary, out_file = NULL) {
       guide  = "none"
     ) +
     ggplot2::facet_wrap(~ param_label, ncol = 3) +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::theme(
       strip.text  = ggplot2::element_text(face = "bold"),
       axis.text.y = ggplot2::element_text(size = ggplot2::rel(0.9))
@@ -703,7 +704,7 @@ plot_forest <- function(param_summary, out_file = NULL) {
 #' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
 plot_ppc_rna <- function(ppc, n_draws = 100, by_cohort = FALSE,
-                         out_file = NULL) {
+                         out_file = NULL, style = NULL) {
 
   y     <- ppc$rna$y
   y_rep <- as.matrix(ppc$rna$y_rep)
@@ -727,7 +728,7 @@ plot_ppc_rna <- function(ppc, n_draws = 100, by_cohort = FALSE,
   obs_df$cohort <- factor(obs_df$cohort, levels = cohort_order)
   rep_df$cohort <- factor(rep_df$cohort, levels = cohort_order)
 
-  cols <- journal_colors()
+  cols <- journal_colors(style)
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_density(
@@ -740,7 +741,7 @@ plot_ppc_rna <- function(ppc, n_draws = 100, by_cohort = FALSE,
       ggplot2::aes(x = val),
       color = "black", linewidth = 0.8
     ) +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::labs(
       x = expression(log[10]~RNA~copies/mL),
       y = "Density"
@@ -772,7 +773,7 @@ plot_ppc_rna <- function(ppc, n_draws = 100, by_cohort = FALSE,
 #' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
 plot_ppc_pfu <- function(ppc, n_draws = 100, by_cohort = FALSE,
-                         out_file = NULL) {
+                         out_file = NULL, style = NULL) {
 
   y     <- ppc$pfu$y
   y_rep <- as.matrix(ppc$pfu$y_rep)
@@ -794,7 +795,7 @@ plot_ppc_pfu <- function(ppc, n_draws = 100, by_cohort = FALSE,
   obs_df$cohort <- factor(obs_df$cohort, levels = cohort_order)
   rep_df$cohort <- factor(rep_df$cohort, levels = cohort_order)
 
-  cols <- journal_colors()
+  cols <- journal_colors(style)
 
   p <- ggplot2::ggplot() +
     ggplot2::geom_density(
@@ -807,7 +808,7 @@ plot_ppc_pfu <- function(ppc, n_draws = 100, by_cohort = FALSE,
       ggplot2::aes(x = val),
       color = "black", linewidth = 0.8
     ) +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::labs(
       x = expression(log[10]~PFU/mL),
       y = "Density"
@@ -846,7 +847,7 @@ plot_ppc_pfu <- function(ppc, n_draws = 100, by_cohort = FALSE,
 #' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
 plot_ppc_lfd <- function(ppc, n_bins = 10, by_cohort = FALSE,
-                         by_phase = FALSE, out_file = NULL) {
+                         by_phase = FALSE, out_file = NULL, style = NULL) {
 
   y     <- ppc$lfd$y
   y_rep <- as.matrix(ppc$lfd$y_rep)
@@ -891,7 +892,7 @@ plot_ppc_lfd <- function(ppc, n_bins = 10, by_cohort = FALSE,
       .groups   = "drop"
     )
 
-  cols <- journal_colors()
+  cols <- journal_colors(style)
 
   if (by_phase && !by_cohort) {
     p <- ggplot2::ggplot(bin_summary,
@@ -910,11 +911,11 @@ plot_ppc_lfd <- function(ppc, n_bins = 10, by_cohort = FALSE,
         position = ggplot2::position_dodge(width = 0.03)
       ) +
       ggplot2::scale_color_manual(
-        values = c("Pre-peak" = unname(cols["pfu"]), "Post-peak" = unname(cols["lfd"])),
+        values = c("Pre-peak" = cols[["pfu"]], "Post-peak" = cols[["lfd"]]),
         name = "Infection phase"
       ) +
       ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::labs(
         x     = "Mean predicted P(LFD+)",
         y     = "Observed LFD+ frequency"
@@ -932,12 +933,12 @@ plot_ppc_lfd <- function(ppc, n_bins = 10, by_cohort = FALSE,
         size = 0.5, position = ggplot2::position_dodge(width = 0.03)
       ) +
       ggplot2::scale_color_manual(
-        values = c("Pre-peak" = unname(cols["pfu"]), "Post-peak" = unname(cols["lfd"])),
+        values = c("Pre-peak" = cols[["pfu"]], "Post-peak" = cols[["lfd"]]),
         name = "Infection phase"
       ) +
       ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
       ggplot2::facet_wrap(~ cohort, nrow = 1) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::labs(
         x     = "Mean predicted P(LFD+)",
         y     = "Observed LFD+ frequency"
@@ -951,14 +952,14 @@ plot_ppc_lfd <- function(ppc, n_bins = 10, by_cohort = FALSE,
       ggplot2::geom_pointrange(
         ggplot2::aes(ymin = pmax(obs_freq - 1.96 * se, 0),
                       ymax = pmin(obs_freq + 1.96 * se, 1)),
-        size = 0.5, color = unname(cols["lfd"])
+        size = 0.5, color = cols[["lfd"]]
       ) +
       ggplot2::geom_text(
         ggplot2::aes(label = n),
         vjust = -1.2, size = 2.5, color = "grey40"
       ) +
       ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::labs(
         x     = "Mean predicted P(LFD+)",
         y     = "Observed LFD+ frequency"
@@ -1028,7 +1029,7 @@ compute_km <- function(event_time, event) {
 #' @param out_file  Path to save PDF/PNG (NULL for interactive)
 #' @return ggplot object or file path
 plot_ppc_sym <- function(ppc, n_draws = 200, by_cohort = FALSE,
-                         out_file = NULL) {
+                         out_file = NULL, style = NULL) {
 
   meta  <- ppc$sym$meta
   y_rep <- as.matrix(ppc$sym$y_rep)
@@ -1070,7 +1071,7 @@ plot_ppc_sym <- function(ppc, n_draws = 200, by_cohort = FALSE,
   }
 
   draw_idx <- sample(nrow(y_rep), min(n_draws, nrow(y_rep)))
-  cols <- journal_colors()
+  cols <- journal_colors(style)
 
   if (by_cohort) {
     # ---- Faceted version: one panel per cohort ----
@@ -1138,7 +1139,7 @@ plot_ppc_sym <- function(ppc, n_draws = 200, by_cohort = FALSE,
         limits = c(0, 1),
         expand = c(0, 0)
       ) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::labs(
         x = "Days since estimated infection",
         y = "Cumulative incidence of symptom onset"
@@ -1185,7 +1186,7 @@ plot_ppc_sym <- function(ppc, n_draws = 200, by_cohort = FALSE,
         limits = c(0, 1),
         expand = c(0, 0)
       ) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::labs(
         x = "Days since estimated infection",
         y = "Cumulative incidence of symptom onset"
@@ -1261,58 +1262,69 @@ save_convergence_table <- function(convergence, out_file) {
 #' @return Character vector of all generated file paths
 plot_diagnostics <- function(param_summary, ppc, convergence,
                              recovery_check = NULL,
-                             out_dir = "output/figures") {
+                             out_dir = "output/figures",
+                             style = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   files <- character()
 
   # 1. Forest plot
   f <- plot_forest(param_summary,
-                   out_file = file.path(out_dir, "forest_covariates.pdf"))
+                   out_file = file.path(out_dir, "forest_covariates.pdf"),
+                   style = style)
   files <- c(files, f)
 
   # 2. PPC — RNA (aggregate)
   f <- plot_ppc_rna(ppc, by_cohort = FALSE,
-                    out_file = file.path(out_dir, "ppc_rna.pdf"))
+                    out_file = file.path(out_dir, "ppc_rna.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 2b. PPC — RNA (by cohort)
   f <- plot_ppc_rna(ppc, by_cohort = TRUE,
-                    out_file = file.path(out_dir, "ppc_rna_cohort.pdf"))
+                    out_file = file.path(out_dir, "ppc_rna_cohort.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 3. PPC — PFU (aggregate)
   f <- plot_ppc_pfu(ppc, by_cohort = FALSE,
-                    out_file = file.path(out_dir, "ppc_pfu.pdf"))
+                    out_file = file.path(out_dir, "ppc_pfu.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 3b. PPC — PFU (by cohort)
   f <- plot_ppc_pfu(ppc, by_cohort = TRUE,
-                    out_file = file.path(out_dir, "ppc_pfu_cohort.pdf"))
+                    out_file = file.path(out_dir, "ppc_pfu_cohort.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 4. PPC — LFD calibration (aggregate)
   f <- plot_ppc_lfd(ppc, by_cohort = FALSE,
-                    out_file = file.path(out_dir, "ppc_lfd_calibration.pdf"))
+                    out_file = file.path(out_dir, "ppc_lfd_calibration.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 4b. PPC — LFD calibration (by cohort)
   f <- plot_ppc_lfd(ppc, by_cohort = TRUE,
-                    out_file = file.path(out_dir, "ppc_lfd_calibration_cohort.pdf"))
+                    out_file = file.path(out_dir, "ppc_lfd_calibration_cohort.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 4c. PPC — LFD calibration (pre-peak vs post-peak)
   f <- plot_ppc_lfd(ppc, by_phase = TRUE,
-                    out_file = file.path(out_dir, "ppc_lfd_calibration_phase.pdf"))
+                    out_file = file.path(out_dir, "ppc_lfd_calibration_phase.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 5. PPC — Symptom onset (aggregate)
   f <- plot_ppc_sym(ppc, by_cohort = FALSE,
-                    out_file = file.path(out_dir, "ppc_sym.pdf"))
+                    out_file = file.path(out_dir, "ppc_sym.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 5b. PPC — Symptom onset (by cohort)
   f <- plot_ppc_sym(ppc, by_cohort = TRUE,
-                    out_file = file.path(out_dir, "ppc_sym_cohort.pdf"))
+                    out_file = file.path(out_dir, "ppc_sym_cohort.pdf"),
+                    style = style)
   files <- c(files, f)
 
   # 6. Convergence table
@@ -1325,7 +1337,8 @@ plot_diagnostics <- function(param_summary, ppc, convergence,
   # 7. Parameter recovery (if available)
   if (!is.null(recovery_check)) {
     f <- plot_recovery(recovery_check,
-                       out_file = file.path(out_dir, "param_recovery.pdf"))
+               out_file = file.path(out_dir, "param_recovery.pdf"),
+               style = style)
     files <- c(files, f)
   }
 
@@ -1410,7 +1423,7 @@ summarize_correlation <- function(fit, stan_data, prob = 0.90) {
 #' @param out_file  Path to save the PDF (or NULL for interactive)
 #' @return ggplot object (invisible)
 plot_correlation_matrix <- function(fit, stan_data, prob = 0.90,
-                                    out_file = NULL) {
+                                    out_file = NULL, style = NULL) {
   if (!isTRUE(stan_data$ind_corr == 1)) {
     message("ind_corr = 0: no correlation matrix to plot")
     return(invisible(NULL))
@@ -1463,7 +1476,7 @@ plot_correlation_matrix <- function(fit, stan_data, prob = 0.90,
                                 Omega[RNA])),
       x = NULL, y = NULL
     ) +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::coord_equal()
 
   if (!is.null(out_file)) {
@@ -1484,7 +1497,8 @@ plot_correlation_matrix <- function(fit, stan_data, prob = 0.90,
 #' @param stan_data Stan data list (must have \code{ind_corr = 1})
 #' @param out_file  Path to save the PDF (or NULL for interactive)
 #' @return ggplot object (invisible)
-plot_correlation_densities <- function(fit, stan_data, out_file = NULL) {
+plot_correlation_densities <- function(fit, stan_data, out_file = NULL,
+                                       style = NULL) {
   if (!isTRUE(stan_data$ind_corr == 1)) {
     message("ind_corr = 0: no correlation parameters to plot")
     return(invisible(NULL))
@@ -1500,7 +1514,7 @@ plot_correlation_densities <- function(fit, stan_data, out_file = NULL) {
     prob = 0.9
   ) +
     ggplot2::ggtitle("RNA individual-effect SDs") +
-    theme_journal()
+    theme_journal(style)
 
   # --- Omega_rna off-diagonal correlation densities ---
   pairs <- list(c(1,2), c(1,3), c(1,4), c(2,3), c(2,4), c(3,4))
@@ -1514,7 +1528,7 @@ plot_correlation_densities <- function(fit, stan_data, out_file = NULL) {
   ) +
     ggplot2::geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
     ggplot2::ggtitle("RNA individual-effect correlations") +
-    theme_journal()
+    theme_journal(style)
 
   p <- patchwork::wrap_plots(p_sigma, p_corr, ncol = 1)
 

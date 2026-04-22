@@ -8,7 +8,8 @@
 #' @param stan_data Stan data list
 #' @param out_dir   Output directory for figures
 #' @return Character vector of saved file paths
-plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
+plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures",
+                                  style = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   files <- c()
 
@@ -50,13 +51,13 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
   # transformation parameters
   trans_vars <- c("tau0_dp", "tau_dp", "tau0_wp", "tau_wp",
                   "tau0_wr", "tau_wr")
-  cols <- journal_colors()
+  cols <- journal_colors(style)
   p1 <- pp_plot |>
     tidyr::pivot_longer(dplyr::all_of(trans_vars)) |>
     ggplot2::ggplot(ggplot2::aes(x = value)) +
     ggplot2::geom_histogram(bins = 30, fill = cols[["muted"]], color = "white") +
     ggplot2::facet_wrap(~ name, scales = "free") +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::labs(title = paste("Prior: transformation parameters", model_label))
 
   f1 <- file.path(out_dir, "prior_trans_pe.pdf")
@@ -72,7 +73,7 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
     ggplot2::ggplot(ggplot2::aes(x = value)) +
     ggplot2::geom_histogram(bins = 30, fill = cols[["muted"]], color = "white") +
     ggplot2::facet_wrap(~ name, scales = "free") +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::labs(title = paste("Prior: population kinetics parameters", model_label))
 
   f2 <- file.path(out_dir, "prior_pe.pdf")
@@ -88,7 +89,7 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
     ggplot2::ggplot(ggplot2::aes(x = value)) +
     ggplot2::geom_histogram(bins = 30, fill = cols[["sym"]], color = "white") +
     ggplot2::facet_wrap(~ name, scales = "free") +
-    theme_journal() +
+    theme_journal(style) +
     ggplot2::labs(title = paste("Prior: symptom hazard parameters", model_label))
 
   f3 <- file.path(out_dir, "prior_sym.pdf")
@@ -97,7 +98,7 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
 
   # prior predictive trajectories (2D kernel density)
   # Filter to visible range BEFORE KDE so density isn't diluted by extreme tails
-  cols <- journal_colors()
+  cols <- journal_colors(style)
   set.seed(42)
 
   # Use rna_hat/pfu_hat (latent trajectories) instead of rna/pfu
@@ -139,7 +140,7 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
       ) +
       ggplot2::scale_fill_manual(values = pal, guide = "none") +
       ggplot2::coord_cartesian(ylim = c(0, 20), xlim = c(-10, 20)) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::labs(
         title = title,
         x = "Days from peak",
@@ -157,7 +158,7 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
   p4 <- p4_rna + p4_pfu + patchwork::plot_layout(ncol = 2)
 
   f4 <- file.path(out_dir, "prior_trajectories.pdf")
-  dims <- journal_dims("full")
+  dims <- journal_dims("full", style)
   ggplot2::ggsave(f4, p4, width = dims$width, height = dims$height)
   files <- c(files, f4)
 
@@ -173,10 +174,10 @@ plot_prior_predictive <- function(pp, stan_data, out_dir = "output/figures") {
 #'
 #' @param out_dir  Output directory
 #' @return Character vector of saved file paths
-plot_ode_examples <- function(out_dir = "output/figures") {
+plot_ode_examples <- function(out_dir = "output/figures", style = NULL) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-  cols <- journal_colors()
+  cols <- journal_colors(style)
 
   # ── Helper: fit smfun to an ODE trajectory ──────────────────────────────
   fit_smfun <- function(time, logV) {
@@ -237,7 +238,7 @@ plot_ode_examples <- function(out_dir = "output/figures") {
         values = c("ODE solution" = "solid", "Piecewise exponential" = "dashed"),
         name = NULL
       ) +
-      theme_journal() +
+      theme_journal(style) +
       ggplot2::theme(
         legend.position = "bottom",
         legend.key.width = ggplot2::unit(1.5, "cm")

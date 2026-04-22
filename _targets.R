@@ -92,7 +92,7 @@ list(
 
   tar_target(
     fig_prior,
-    plot_prior_predictive(prior_pred, stan_data),
+    plot_prior_predictive(prior_pred, stan_data, style = "pnas"),
     format = "file"
   ),
 
@@ -145,14 +145,16 @@ list(
   tar_target(
     fig_traces,
     plot_traces(kinetics_mcmc, stan_data = stan_data,
-                out_file = "output/figures/trace_plots.pdf"),
+                out_file = "output/figures/trace_plots.pdf",
+                style = "pnas"),
     format = "file"
   ),
 
   tar_target(
     fig_diagnostics,
     plot_diagnostics(param_summary, ppc, convergence,
-                     recovery_check = recovery_check),
+                     recovery_check = recovery_check,
+                     style = "pnas"),
     format = "file"
   ),
 
@@ -167,14 +169,16 @@ list(
   tar_target(
     fig_corr_matrix,
     plot_correlation_matrix(kinetics_mcmc, stan_data,
-                            out_file = "output/figures/corr_matrix.pdf"),
+                            out_file = "output/figures/corr_matrix.pdf",
+                            style = "pnas"),
     format = "file"
   ),
 
   tar_target(
     fig_corr_densities,
     plot_correlation_densities(kinetics_mcmc, stan_data,
-                               out_file = "output/figures/corr_densities.pdf"),
+                               out_file = "output/figures/corr_densities.pdf",
+                               style = "pnas"),
     format = "file"
   ),
 
@@ -268,7 +272,7 @@ list(
 
   # ── ODE comparison figures (for manuscript/presentation) ────────────────────
 
-  tar_target(fig_ode, plot_ode_examples(), format = "file"),
+  tar_target(fig_ode, plot_ode_examples(style = "pnas"), format = "file"),
 
   tar_target(
     fig_pub_main,
