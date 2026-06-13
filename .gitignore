@@ -63,10 +63,11 @@ _targets/
 # old project structure (archived, root-level only)
 /_archive/
 
-# compiled Stan models (platform-specific binaries)
+# compiled Stan models (platform-specific binaries and generated C++ headers)
 stan/kinetics_model
 stan/kinetics_model_gq
 stan/sim
+*.hpp
 stan/_archive/
 stan/_archive/*.rds
 
