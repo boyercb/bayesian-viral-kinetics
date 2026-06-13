@@ -333,6 +333,28 @@ map_init <- function(mod, stan_data, chains = 4, seed = 42) {
 #'   Default is 1 (no threading, sequential reduce_sum fallback).
 #' @param ...         Additional arguments passed to $sample()
 #' @return CmdStanMCMC fit object
+
+#' Persist Stan output to CSV files
+#'
+#' Utility function to consolidate CSV output file persistence across
+#' \code{fit_model()} and \code{run_gq()}.
+#'
+#' @param fit A CmdStanMCMC or CmdStanGQ object from sampling or GQ.
+#' @param subdir Subdirectory name within \code{output/stan_csv/}
+#'   (e.g., \code{""} for sampling, \code{"gq"} for GQ).
+#' @return Invisibly returns the CSV directory path.
+persist_stan_output <- function(fit, subdir = "") {
+  base_dir <- "output"
+  if (subdir == "") {
+    csv_dir <- file.path(base_dir, "stan_csv")
+  } else {
+    csv_dir <- file.path(base_dir, "stan_csv", subdir)
+  }
+  if (!dir.exists(csv_dir)) dir.create(csv_dir, recursive = TRUE)
+  fit$save_output_files(dir = csv_dir)
+  invisible(csv_dir)
+}
+
 fit_model <- function(stan_file, stan_data,
                       chains = 4, iter_warmup = 1000, iter_sampling = 2000,
                       adapt_delta = 0.95, max_treedepth = 12,
@@ -411,9 +433,7 @@ fit_model <- function(stan_file, stan_data,
   )
   # Persist CSV output files so the CmdStanMCMC object survives
   # serialization/deserialization by targets (qs format).
-  csv_dir <- file.path("output", "stan_csv")
-  if (!dir.exists(csv_dir)) dir.create(csv_dir, recursive = TRUE)
-  fit$save_output_files(dir = csv_dir)
+  persist_stan_output(fit, subdir = "")
   fit
 }
 
@@ -437,10 +457,8 @@ run_gq <- function(fit, stan_data,
     data = stan_data,
     parallel_chains = fit$num_chains()
   )
-  # Persist GQ CSV files
-  gq_csv_dir <- file.path("output", "stan_csv_gq")
-  if (!dir.exists(gq_csv_dir)) dir.create(gq_csv_dir, recursive = TRUE)
-  gq_fit$save_output_files(dir = gq_csv_dir)
+  # Persist GQ CSV files using helper function
+  persist_stan_output(gq_fit, subdir = "gq")
   gq_fit
 }
 
