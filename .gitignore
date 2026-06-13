@@ -67,6 +67,7 @@ _targets/
 stan/kinetics_model
 stan/kinetics_model_gq
 stan/sim
+stan/_archive/
 stan/_archive/*.rds
 
 # diagnostic / scratch test scripts (archived locally)
