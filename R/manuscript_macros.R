@@ -11,18 +11,25 @@
 #' @param loo_result    Output of \code{compute_loo()}
 #' @param waic_result   Output of \code{compute_waic()}
 #' @param recovery_check Output of \code{check_recovery()}
+#' @param recovery_coverage_summary Optional output of
+#'   \code{summarize_recovery_coverage()} for replicate-aggregated metrics.
 #' @param param_summary Output of \code{summarize_parameters()}
-#' @param kinetics_mcmc CmdStanMCMC fit object
+#' @param kinetics_mcmc Optional CmdStanMCMC fit object. If unavailable,
+#'   results macros are derived from \code{param_summary} and convergence object.
 #' @param stacked_dat   Stacked analysis dataset
+#' @param credible_interval_level Credible interval mass used for results
+#'   summaries in manuscript macros. Must be in (0, 1). Default is 0.95.
 #' @param out_file      Output path for LaTeX macro file
 #' @return Path to output file (invisibly)
 save_manuscript_macros <- function(convergence,
                                    loo_result,
                                    waic_result,
                                    recovery_check,
+                                   recovery_coverage_summary = NULL,
                                    param_summary,
-                                   kinetics_mcmc,
+                                   kinetics_mcmc = NULL,
                                    stacked_dat,
+                                   credible_interval_level = 0.95,
                                    out_file = "output/tables/manuscript_numbers.tex") {
 
   dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
@@ -44,28 +51,88 @@ save_manuscript_macros <- function(convergence,
     x
   }
 
-  q90 <- function(var) {
+  if (!is.numeric(credible_interval_level) ||
+      length(credible_interval_level) != 1 ||
+      !is.finite(credible_interval_level) ||
+      credible_interval_level <= 0 ||
+      credible_interval_level >= 1) {
+    stop("credible_interval_level must be a single number in (0, 1).")
+  }
+
+  q_prob <- (1 - credible_interval_level) / 2
+
+  get_ci_from_param_summary <- function(var) {
+    tables <- c(
+      "pop_params", "transformation_params", "error_params",
+      "symptom_params", "corr_params"
+    )
+    for (nm in tables) {
+      if (!nm %in% names(param_summary)) next
+      tab <- param_summary[[nm]]
+      if (!all(c("parameter", "estimate", "ci_lo", "ci_hi") %in% names(tab))) next
+      row <- tab[tab$parameter == var, , drop = FALSE]
+      if (nrow(row) == 1) {
+        return(c(
+          med = as.numeric(row$estimate[1]),
+          lo = as.numeric(row$ci_lo[1]),
+          hi = as.numeric(row$ci_hi[1])
+        ))
+      }
+    }
+    NULL
+  }
+
+  q_ci <- function(var) {
+    from_summary <- get_ci_from_param_summary(var)
+    if (!is.null(from_summary) && all(is.finite(from_summary))) {
+      return(from_summary)
+    }
+
+    if (is.null(kinetics_mcmc)) {
+      stop(sprintf("Unable to derive summary for '%s': no fit and no param_summary row.", var))
+    }
+
     d <- as.numeric(kinetics_mcmc$draws(var, format = "matrix"))
+    if (length(d) == 0 || !all(is.finite(d))) {
+      stop(sprintf("Unable to derive summary for '%s' from fit draws.", var))
+    }
     c(
       med = stats::median(d),
-      lo = as.numeric(stats::quantile(d, 0.05)),
-      hi = as.numeric(stats::quantile(d, 0.95))
+      lo = as.numeric(stats::quantile(d, q_prob)),
+      hi = as.numeric(stats::quantile(d, 1 - q_prob))
     )
   }
 
   # Convergence metrics
-  summ <- kinetics_mcmc$summary()
-  i_rhat <- which.max(summ$rhat)
-  i_essb <- which.min(summ$ess_bulk)
-  i_esst <- which.min(summ$ess_tail)
+  rhat_max_var <- "NA"
+  ess_bulk_var <- "NA"
+  ess_tail_var <- "NA"
 
-  rhat_max_var <- stan_var_to_latex(summ$variable[i_rhat])
-  ess_bulk_var <- stan_var_to_latex(summ$variable[i_essb])
-  ess_tail_var <- stan_var_to_latex(summ$variable[i_esst])
+  if (!is.null(kinetics_mcmc)) {
+    summ <- kinetics_mcmc$summary()
+    i_rhat <- which.max(summ$rhat)
+    i_essb <- which.min(summ$ess_bulk)
+    i_esst <- which.min(summ$ess_tail)
+
+    rhat_max_var <- stan_var_to_latex(summ$variable[i_rhat])
+    ess_bulk_var <- stan_var_to_latex(summ$variable[i_essb])
+    ess_tail_var <- stan_var_to_latex(summ$variable[i_esst])
+  } else {
+    if (!is.null(convergence$rhat_warnings) && nrow(convergence$rhat_warnings) > 0) {
+      rhat_max_var <- stan_var_to_latex(convergence$rhat_warnings$variable[1])
+    }
+    if (!is.null(convergence$ess_warnings) && nrow(convergence$ess_warnings) > 0) {
+      ess_bulk_var <- stan_var_to_latex(convergence$ess_warnings$variable[1])
+      ess_tail_var <- stan_var_to_latex(convergence$ess_warnings$variable[1])
+    }
+  }
 
   n_rhat_warn <- if (is.null(convergence$rhat_warnings)) 0 else nrow(convergence$rhat_warnings)
 
-  diag <- tryCatch(kinetics_mcmc$diagnostic_summary(), error = function(e) NULL)
+  diag <- tryCatch(
+    if (!is.null(kinetics_mcmc)) kinetics_mcmc$diagnostic_summary() else NULL,
+    error = function(e) NULL
+  )
   ebfmi_vals <- numeric(0)
   if (!is.null(diag)) {
     cand <- c("ebfmi", "e_bfmi")
@@ -107,32 +174,52 @@ save_manuscript_macros <- function(convergence,
   n_recovery <- nrow(recovery_check)
   n_recovery_covered <- sum(recovery_check$covered, na.rm = TRUE)
 
-  # Population/results numbers (90% CrI)
-  dp <- q90("dp_mean_rna")
-  wp <- q90("wp_mean_rna")
-  wr <- q90("wr_mean_rna")
-  a1_dp <- q90("tau_dp[2]")
-  a1_wr <- q90("tau_wr[2]")
+  recovery_empirical_pct <- 100 * n_recovery_covered / n_recovery
+  recovery_empirical_lo <- NA_real_
+  recovery_empirical_hi <- NA_real_
+  recovery_n_reps <- 1L
 
-  sigma_rna <- q90("sigma_rna")
-  sigma_pfu <- q90("sigma_pfu")
-  fp <- q90("fp")
+  if (!is.null(recovery_coverage_summary) &&
+      !is.null(recovery_coverage_summary$overall) &&
+      !is.null(recovery_coverage_summary$by_parameter)) {
+    recovery_empirical_pct <-
+      100 * as.numeric(recovery_coverage_summary$overall$empirical_coverage[1])
+    recovery_empirical_lo <-
+      100 * as.numeric(recovery_coverage_summary$overall$ci_lo[1])
+    recovery_empirical_hi <-
+      100 * as.numeric(recovery_coverage_summary$overall$ci_hi[1])
+    recovery_n_reps <- max(
+      as.integer(recovery_coverage_summary$by_parameter$n_replicates),
+      na.rm = TRUE
+    )
+  }
 
-  z0 <- q90("zeta_sym_intercept")
-  z1 <- q90("zeta_sym_pfu")
-  z2 <- q90("zeta_sym_rna")
-  sig_sym <- q90("sigma_sym")
+  # Population/results numbers (configurable CrI level)
+  dp <- q_ci("dp_mean_rna")
+  wp <- q_ci("wp_mean_rna")
+  wr <- q_ci("wr_mean_rna")
+  a1_dp <- q_ci("tau_dp[2]")
+  a1_wr <- q_ci("tau_wr[2]")
 
-  rho_tp_wp <- q90("Omega_rna[1,3]")
-  rho_tp_wr <- q90("Omega_rna[1,4]")
-  rho_dp_wp <- q90("Omega_rna[2,3]")
-  rho_dp_wr <- q90("Omega_rna[2,4]")
-  rho_wp_wr <- q90("Omega_rna[3,4]")
+  sigma_rna <- q_ci("sigma_rna")
+  sigma_pfu <- q_ci("sigma_pfu")
+  fp <- q_ci("fp")
 
-  sd_tp <- q90("sigma_ind_rna[1]")
-  sd_dp <- q90("sigma_ind_rna[2]")
-  sd_wp <- q90("sigma_ind_rna[3]")
-  sd_wr <- q90("sigma_ind_rna[4]")
+  z0 <- q_ci("zeta_sym_intercept")
+  z1 <- q_ci("zeta_sym_pfu")
+  z2 <- q_ci("zeta_sym_rna")
+  sig_sym <- q_ci("sigma_sym")
+
+  rho_tp_wp <- q_ci("Omega_rna[1,3]")
+  rho_tp_wr <- q_ci("Omega_rna[1,4]")
+  rho_dp_wp <- q_ci("Omega_rna[2,3]")
+  rho_dp_wr <- q_ci("Omega_rna[2,4]")
+  rho_wp_wr <- q_ci("Omega_rna[3,4]")
+
+  sd_tp <- q_ci("sigma_ind_rna[1]")
+  sd_dp <- q_ci("sigma_ind_rna[2]")
+  sd_wp <- q_ci("sigma_ind_rna[3]")
+  sd_wr <- q_ci("sigma_ind_rna[4]")
 
   # Covariate effects (from summarize_parameters output)
   cov <- param_summary$covariate_effects
@@ -215,6 +302,10 @@ save_manuscript_macros <- function(convergence,
     macro("MCRecoveryCovered", fmt_int(n_recovery_covered)),
     macro("MCRecoveryTotal", fmt_int(n_recovery)),
     macro("MCRecoveryPct", fmt_num(100 * n_recovery_covered / n_recovery, 1)),
+    macro("MCRecoveryEmpiricalPct", fmt_num(recovery_empirical_pct, 1)),
+    macro("MCRecoveryEmpiricalLo", fmt_num(recovery_empirical_lo, 1)),
+    macro("MCRecoveryEmpiricalHi", fmt_num(recovery_empirical_hi, 1)),
+    macro("MCRecoveryNReplicates", fmt_int(recovery_n_reps)),
     macro("ResDP", fmt_num(dp["med"], 2)),
     macro("ResDPLo", fmt_num(dp["lo"], 2)),
     macro("ResDPHi", fmt_num(dp["hi"], 2)),
@@ -271,6 +362,7 @@ save_manuscript_macros <- function(convergence,
     macro("ResSDDP", fmt_num(sd_dp["med"], 2)),
     macro("ResSDWP", fmt_num(sd_wp["med"], 2)),
     macro("ResSDWR", fmt_num(sd_wr["med"], 2)),
+    macro("ResCrILevelPct", fmt_int(100 * credible_interval_level)),
     macro("CovDeltaDP", fmt_num(c_delta_dp["est"], 2)),
     macro("CovDeltaDPLo", fmt_num(c_delta_dp["lo"], 2)),
     macro("CovDeltaDPHi", fmt_num(c_delta_dp["hi"], 2)),
