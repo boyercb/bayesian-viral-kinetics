@@ -573,6 +573,134 @@ check_recovery <- function(fit, truth, stan_data = NULL, prob = 0.90) {
 }
 
 
+#' Classify recovery parameters into coarse groups
+#'
+#' @param parameter Character vector of recovery parameter names.
+#' @return Character vector of parameter groups.
+classify_recovery_parameter_group <- function(parameter) {
+  dplyr::case_when(
+    grepl("^(dp_mean_rna|wp_mean_rna|wr_mean_rna)$", parameter) ~ "rna_population",
+    grepl("^(tau0_|tau_)", parameter) ~ "rna_to_pfu_map",
+    grepl("^(sigma_rna|sigma_pfu|fp|fn)$", parameter) ~ "measurement_error",
+    grepl("^(zeta_sym_|sigma_sym$)", parameter) ~ "symptom_model",
+    grepl("^(alpha_tcid50_|alpha_cult_)", parameter) ~ "culture_model",
+    grepl("^(sigma_ind_rna_|rho_rna_)", parameter) ~ "hierarchical_re",
+    parameter == "wf_mean" ~ "flat_top",
+    TRUE ~ "other"
+  )
+}
+
+
+#' Summarize empirical recovery coverage across replicate runs
+#'
+#' Aggregates replicate-level recovery checks into empirical coverage estimates
+#' by parameter and by parameter group.
+#'
+#' @param recovery_checks Tibble produced by binding replicate outputs from
+#'   \\code{check_recovery()}, with columns including
+#'   \\code{parameter}, \\code{covered}, and optional \\code{replicate}.
+#' @param conf_level Confidence level for binomial intervals (default 0.95).
+#' @return A list with elements \\code{by_parameter}, \\code{by_group},
+#'   and \\code{overall}.
+summarize_recovery_coverage <- function(recovery_checks, conf_level = 0.95) {
+
+  if (!"replicate" %in% names(recovery_checks)) {
+    recovery_checks$replicate <- 1L
+  }
+
+  wilson_ci <- function(k, n, conf = 0.95) {
+    if (is.na(n) || n <= 0) {
+      return(c(NA_real_, NA_real_))
+    }
+    z <- stats::qnorm(1 - (1 - conf) / 2)
+    p <- k / n
+    denom <- 1 + z^2 / n
+    center <- (p + z^2 / (2 * n)) / denom
+    half <- (z / denom) * sqrt((p * (1 - p) / n) + (z^2 / (4 * n^2)))
+    c(max(0, center - half), min(1, center + half))
+  }
+
+  by_parameter <- recovery_checks |>
+    dplyr::group_by(parameter) |>
+    dplyr::summarise(
+      n = sum(!is.na(covered)),
+      n_covered = sum(covered, na.rm = TRUE),
+      empirical_coverage = dplyr::if_else(n > 0, n_covered / n, NA_real_),
+      mc_se = dplyr::if_else(
+        n > 0,
+        sqrt(empirical_coverage * (1 - empirical_coverage) / n),
+        NA_real_
+      ),
+      mean_abs_bias = mean(abs(bias), na.rm = TRUE),
+      mean_width = mean(width, na.rm = TRUE),
+      n_replicates = dplyr::n_distinct(replicate),
+      .groups = "drop"
+    )
+
+  ci_mat <- t(vapply(
+    seq_len(nrow(by_parameter)),
+    function(i) wilson_ci(by_parameter$n_covered[i], by_parameter$n[i], conf = conf_level),
+    numeric(2)
+  ))
+  by_parameter$ci_lo <- ci_mat[, 1]
+  by_parameter$ci_hi <- ci_mat[, 2]
+  by_parameter$parameter_group <- classify_recovery_parameter_group(by_parameter$parameter)
+
+  by_group <- by_parameter |>
+    dplyr::group_by(parameter_group) |>
+    dplyr::summarise(
+      n_parameters = dplyr::n(),
+      n_total = sum(n, na.rm = TRUE),
+      n_covered_total = sum(n_covered, na.rm = TRUE),
+      empirical_coverage = dplyr::if_else(
+        n_total > 0,
+        n_covered_total / n_total,
+        NA_real_
+      ),
+      mc_se = dplyr::if_else(
+        n_total > 0,
+        sqrt(empirical_coverage * (1 - empirical_coverage) / n_total),
+        NA_real_
+      ),
+      mean_abs_bias = mean(mean_abs_bias, na.rm = TRUE),
+      mean_width = mean(mean_width, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  ci_group <- t(vapply(
+    seq_len(nrow(by_group)),
+    function(i) wilson_ci(by_group$n_covered_total[i], by_group$n_total[i], conf = conf_level),
+    numeric(2)
+  ))
+  by_group$ci_lo <- ci_group[, 1]
+  by_group$ci_hi <- ci_group[, 2]
+
+  overall_n <- sum(by_parameter$n, na.rm = TRUE)
+  overall_k <- sum(by_parameter$n_covered, na.rm = TRUE)
+  overall_ci <- wilson_ci(overall_k, overall_n, conf = conf_level)
+  overall <- tibble::tibble(
+    n_parameters = nrow(by_parameter),
+    n_total = overall_n,
+    n_covered_total = overall_k,
+    empirical_coverage = if (overall_n > 0) overall_k / overall_n else NA_real_,
+    mc_se = if (overall_n > 0) {
+      p <- overall_k / overall_n
+      sqrt(p * (1 - p) / overall_n)
+    } else {
+      NA_real_
+    },
+    ci_lo = overall_ci[1],
+    ci_hi = overall_ci[2]
+  )
+
+  list(
+    by_parameter = by_parameter,
+    by_group = by_group,
+    overall = overall
+  )
+}
+
+
 #' Plot parameter recovery results
 #'
 #' @param recovery  Tibble from \code{\link{check_recovery}}

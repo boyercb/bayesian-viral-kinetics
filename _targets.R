@@ -301,35 +301,99 @@ list(
 
   # ── Parameter recovery (simulated-data identifiability check) ──────────────
   #
-  #  Uses 50% subsample of individuals for speed (~2× faster than full data).
-  #  1. subsample the stan_data structure
-  #  2. simulate_data() generates a synthetic dataset under known params
-  #  3. fit the same Stan model on the simulated data
-  #  4. check_recovery() compares posteriors to ground truth
-  #  5. plot_recovery() visualises coverage
+  #  Configurable settings:
+  #   - recovery_frac controls per-source stratified subsampling of individuals
+  #   - recovery_n_reps controls number of simulation/fit replicates
+  #
+  #  Workflow:
+  #  1. subsample_stan_data() draws individuals stratified by source
+  #  2. simulate_data() generates synthetic datasets under known params
+  #  3. fit the same Stan model on each synthetic dataset
+  #  4. check_recovery() compares posteriors to truth per replicate
+  #  5. summarize_recovery_coverage() aggregates empirical coverage across reps
+  #  6. plot_recovery() visualises one representative replicate
+
+  # Recovery settings (full-size by default; override for faster debugging)
+  tar_target(recovery_frac, 1.0),
+  tar_target(recovery_n_reps, 5L),
+  tar_target(recovery_subsample_seed, 99L),
+  tar_target(recovery_sim_seed_base, 4200L),
 
   tar_target(
     recovery_stan_data,
-    subsample_stan_data(stan_data, frac = 0.5, seed = 99)
+    subsample_stan_data(
+      stan_data,
+      frac = recovery_frac,
+      seed = recovery_subsample_seed
+    )
   ),
 
-  tar_target(sim_params,   default_params(recovery_stan_data)),
-  tar_target(sim_result,   simulate_data(recovery_stan_data, sim_params, seed = 42)),
-  tar_target(sim_stan_data, sim_result$sim_data),
-  tar_target(sim_truth,     sim_result$truth),
+  tar_target(sim_params, default_params(recovery_stan_data)),
+  tar_target(recovery_replicate, seq_len(recovery_n_reps)),
 
   tar_target(
-    recovery_mcmc,
-    fit_model("stan/kinetics_model.stan", sim_stan_data,
+    recovery_sim_result,
+    simulate_data(
+      recovery_stan_data,
+      sim_params,
+      seed = recovery_sim_seed_base + recovery_replicate
+    ),
+    pattern = map(recovery_replicate)
+  ),
+
+  tar_target(recovery_sim_stan_data, recovery_sim_result$sim_data,
+             pattern = map(recovery_sim_result)),
+  tar_target(recovery_sim_truth, recovery_sim_result$truth,
+             pattern = map(recovery_sim_result)),
+
+  tar_target(
+    recovery_mcmc_rep,
+    fit_model("stan/kinetics_model.stan", recovery_sim_stan_data,
               chains = 4, iter_warmup = 1000, iter_sampling = 2000,
               adapt_delta = 0.95, max_treedepth = 12,
               init_method = "map",
               threads_per_chain = 4)
+    ,
+    pattern = map(recovery_sim_stan_data)
   ),
 
-  tar_target(recovery_check, check_recovery(
-    recovery_mcmc, sim_truth, stan_data = sim_stan_data
-  )),
+  tar_target(
+    recovery_check_rep,
+    {
+      out <- check_recovery(
+        recovery_mcmc_rep,
+        recovery_sim_truth,
+        stan_data = recovery_sim_stan_data
+      )
+      out$replicate <- recovery_replicate
+      out
+    },
+    pattern = map(
+      recovery_mcmc_rep,
+      recovery_sim_truth,
+      recovery_sim_stan_data,
+      recovery_replicate
+    )
+  ),
+
+  # Stem value of dynamic branches (combined across replicates).
+  tar_target(recovery_checks, recovery_check_rep),
+
+  tar_target(
+    recovery_coverage_summary,
+    summarize_recovery_coverage(recovery_checks)
+  ),
+
+  # Representative single replicate for existing downstream figure/table wiring.
+  tar_target(
+    recovery_check,
+    dplyr::filter(recovery_checks, replicate == 1)
+  ),
+
+  tar_target(
+    manuscript_credible_interval_level,
+    0.95
+  ),
 
   tar_target(
     tex_manuscript_numbers,
@@ -338,9 +402,11 @@ list(
       loo_result = loo_result,
       waic_result = waic_result,
       recovery_check = recovery_check,
+      recovery_coverage_summary = recovery_coverage_summary,
       param_summary = param_summary,
       kinetics_mcmc = kinetics_mcmc,
       stacked_dat = stacked_dat,
+      credible_interval_level = manuscript_credible_interval_level,
       out_file = "output/tables/manuscript_numbers.tex"
     ),
     format = "file"

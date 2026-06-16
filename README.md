@@ -157,6 +157,8 @@ The document shows how to:
 - The canonical workflow is the `targets` pipeline in `_targets.R`.
 - Generated artifacts in `output/` and `_targets/` are expected to be rebuildable.
 - CmdStan CSV outputs are deliberately persisted to make fitted objects robust across serialization and path changes.
+- Parameter recovery simulation defaults to full-size data (`recovery_frac = 1.0`) and supports optional per-source stratified subsampling for faster debug runs.
+- Recovery coverage should be interpreted from replicate-aggregated summaries (`recovery_coverage_summary`), not a single simulated dataset.
 
 ## Computational efficiency
 
