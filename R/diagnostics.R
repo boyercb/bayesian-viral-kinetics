@@ -1332,6 +1332,244 @@ plot_ppc_sym <- function(ppc, n_draws = 200, by_cohort = FALSE,
 }
 
 
+#' Classify parameters for grouped prior-vs-posterior influence plots
+#'
+#' @param parameter Parameter name
+#' @return Group label
+classify_influence_group <- function(parameter) {
+  dplyr::case_when(
+    grepl("^(dp_mean_rna|wp_mean_rna|wr_mean_rna|tau_(tp|dp|wp|wr)|wf_raw)", parameter) ~ "core",
+    grepl("^(tau0_lfd|tau_lfd|sigma_rna|sigma_pfu|zeta_sym_|sigma_sym|fp$|fn$|alpha_tcid50|alpha_cult)", parameter) ~ "assay",
+    grepl("^(beta_|tp_k_|dp_k_|wp_k_|wr_k_|lfd_k|to_k_sym)", parameter) ~ "covariates",
+    grepl("^(sigma_ind_rna|Omega_rna|sigma_ind_pfu)", parameter) ~ "correlations",
+    TRUE ~ "other"
+  )
+}
+
+
+#' Extract prior draws for a named parameter from prior_predictive output
+#'
+#' @param prior_pred Output from \code{prior_predictive()}
+#' @param parameter Parameter name like \code{tau_dp[1]} or \code{fp}
+#' @return Numeric vector of draws or NULL if unavailable
+extract_prior_draws <- function(prior_pred, parameter) {
+  n_draws <- length(prior_pred$dp_mean_rna)
+
+  m <- regexec("^([^\\[]+)(?:\\[(.+)\\])?$", parameter)
+  parts <- regmatches(parameter, m)[[1]]
+  base <- parts[2]
+  idx <- if (length(parts) >= 3 && nzchar(parts[3])) {
+    as.integer(strsplit(parts[3], ",")[[1]])
+  } else {
+    integer(0)
+  }
+
+  if (!base %in% names(prior_pred)) return(NULL)
+  obj <- prior_pred[[base]]
+  if (is.null(obj)) return(NULL)
+
+  if (length(idx) == 0) {
+    if (is.numeric(obj) && length(obj) == n_draws) return(as.numeric(obj))
+    return(NULL)
+  }
+
+  if (length(idx) == 1) {
+    i <- idx[1]
+    if (is.matrix(obj)) {
+      # Handle both [draws x k] and [k x draws] matrices.
+      if (nrow(obj) == n_draws && i <= ncol(obj)) return(as.numeric(obj[, i]))
+      if (ncol(obj) == n_draws && i <= nrow(obj)) return(as.numeric(obj[i, ]))
+    }
+    if (is.array(obj) && length(dim(obj)) == 1 && i <= length(obj)) {
+      out <- rep(NA_real_, n_draws)
+      out[] <- obj[i]
+      return(out)
+    }
+    return(NULL)
+  }
+
+  if (length(idx) == 2 && is.array(obj) && length(dim(obj)) == 3) {
+    # Expected shape for Omega_rna: [draws, i, j]
+    if (dim(obj)[1] == n_draws && idx[1] <= dim(obj)[2] && idx[2] <= dim(obj)[3]) {
+      return(as.numeric(obj[, idx[1], idx[2]]))
+    }
+  }
+
+  NULL
+}
+
+
+#' Summarize prior-vs-posterior updating by parameter
+#'
+#' @param fit CmdStanMCMC fit object
+#' @param prior_pred Output from \code{prior_predictive()}
+#' @param max_draws_per_param Max draws retained per parameter in plot data
+#' @return List with \code{metrics} and \code{plot_draws}
+summarize_prior_posterior_influence <- function(fit, prior_pred,
+                                                max_draws_per_param = 1500L) {
+  include_re <- "^(dp_mean_rna|wp_mean_rna|wr_mean_rna|tau0_lfd|tau_lfd\\[|tau_(tp|dp|wp|wr)\\[|sigma_rna$|sigma_pfu$|zeta_sym_|sigma_sym$|fp$|fn$|alpha_tcid50\\[|alpha_cult\\[|beta_(dp|wp|wr)_rna\\[|beta_(dp|wp|wr)_pfu\\[|beta_lfd\\[|beta_sym\\[|tp_k_(rna|pfu)\\[|dp_k_(rna|pfu)\\[|wp_k_(rna|pfu)\\[|wr_k_(rna|pfu)\\[|lfd_k\\[|to_k_sym\\[|sigma_ind_rna\\[|Omega_rna\\[|sigma_ind_pfu\\[|wf_raw\\[)"
+  exclude_re <- "^(z_sym|z_ind_rna|z_(tp|dp|wp|wr)_pfu|(tp|dp|wp|wr)_i_(rna|pfu)|wf_i|lp__|log_lik|.*_rep|.*_hat)"
+
+  vars <- fit$summary()$variable
+  vars <- vars[grepl(include_re, vars)]
+  vars <- vars[!grepl(exclude_re, vars)]
+  vars <- unique(vars)
+
+  rows <- list()
+  draw_rows <- list()
+
+  for (v in vars) {
+    post <- tryCatch(
+      as.numeric(fit$draws(variables = v, format = "draws_matrix")),
+      error = function(e) NULL
+    )
+    prior <- extract_prior_draws(prior_pred, v)
+
+    if (is.null(post) || is.null(prior)) next
+    if (length(post) < 10 || length(prior) < 10) next
+    if (!all(is.finite(post)) || !all(is.finite(prior))) next
+
+    prior_mean <- mean(prior)
+    prior_sd <- stats::sd(prior)
+    post_mean <- mean(post)
+    post_sd <- stats::sd(post)
+
+    sd_ratio <- if (prior_sd > 0) post_sd / prior_sd else NA_real_
+    std_shift <- if (prior_sd > 0) (post_mean - prior_mean) / prior_sd else NA_real_
+
+    rows[[v]] <- tibble::tibble(
+      parameter = v,
+      group = classify_influence_group(v),
+      prior_mean = prior_mean,
+      post_mean = post_mean,
+      prior_sd = prior_sd,
+      post_sd = post_sd,
+      sd_ratio = sd_ratio,
+      std_shift = std_shift,
+      weak_update = !is.na(sd_ratio) && !is.na(std_shift) && sd_ratio > 0.8 && abs(std_shift) < 0.5
+    )
+
+    n_post <- min(max_draws_per_param, length(post))
+    n_prior <- min(max_draws_per_param, length(prior))
+    draw_rows[[v]] <- dplyr::bind_rows(
+      tibble::tibble(parameter = v, group = classify_influence_group(v), type = "posterior", value = sample(post, n_post)),
+      tibble::tibble(parameter = v, group = classify_influence_group(v), type = "prior", value = sample(prior, n_prior))
+    )
+  }
+
+  metrics <- dplyr::bind_rows(rows)
+  plot_draws <- dplyr::bind_rows(draw_rows)
+
+  list(metrics = metrics, plot_draws = plot_draws)
+}
+
+
+#' Save prior-vs-posterior influence metrics table
+#'
+#' @param influence Output of \code{summarize_prior_posterior_influence()}
+#' @param out_file Output CSV path
+#' @return File path (invisibly)
+save_prior_posterior_influence_table <- function(influence,
+                                                 out_file = "output/tables/prior_posterior_influence.csv") {
+  dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+  readr::write_csv(influence$metrics, out_file)
+  invisible(out_file)
+}
+
+
+#' Plot grouped prior-vs-posterior influence densities
+#'
+#' @param influence Output of \code{summarize_prior_posterior_influence()}
+#' @param group One of core, assay, covariates, correlations
+#' @param out_file Optional file path to save plot
+#' @param style Optional journal style
+#' @return Plot object or output file path
+plot_prior_posterior_influence_group <- function(influence,
+                                                 group = c("core", "assay", "covariates", "correlations"),
+                                                 out_file = NULL,
+                                                 style = NULL) {
+  group <- match.arg(group)
+  cols <- journal_colors(style)
+
+  draws <- influence$plot_draws |>
+    dplyr::filter(group == !!group)
+  if (nrow(draws) == 0) {
+    stop(sprintf("No parameters found for group '%s'.", group))
+  }
+
+  metrics <- influence$metrics |>
+    dplyr::filter(group == !!group) |>
+    dplyr::arrange(dplyr::desc(weak_update), dplyr::desc(sd_ratio), parameter)
+
+  keep_params <- head(metrics$parameter, 24)
+  draws <- draws |>
+    dplyr::filter(parameter %in% keep_params) |>
+    dplyr::mutate(parameter = factor(parameter, levels = keep_params))
+
+  p <- ggplot2::ggplot(draws, ggplot2::aes(x = value, color = type, fill = type)) +
+    ggplot2::geom_density(alpha = 0.2, linewidth = 0.5) +
+    ggplot2::facet_wrap(~ parameter, scales = "free", ncol = 4) +
+    ggplot2::scale_color_manual(values = c(prior = cols$muted, posterior = cols$rna)) +
+    ggplot2::scale_fill_manual(values = c(prior = cols$muted, posterior = cols$rna)) +
+    theme_journal(style) +
+    ggplot2::labs(
+      title = sprintf("Prior vs posterior influence: %s", group),
+      x = "Parameter value",
+      y = "Density",
+      color = NULL,
+      fill = NULL
+    )
+
+  if (!is.null(out_file)) {
+    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
+    ggplot2::ggsave(out_file, p, width = 14, height = 10)
+    return(out_file)
+  }
+
+  invisible(p)
+}
+
+
+#' Plot core kinetics/transformation influence group
+#'
+#' @inheritParams plot_prior_posterior_influence_group
+plot_prior_posterior_core <- function(influence,
+                                      out_file = "output/figures/prior_posterior_core.pdf",
+                                      style = NULL) {
+  plot_prior_posterior_influence_group(influence, group = "core", out_file = out_file, style = style)
+}
+
+
+#' Plot assay/error/symptom influence group
+#'
+#' @inheritParams plot_prior_posterior_influence_group
+plot_prior_posterior_assay <- function(influence,
+                                       out_file = "output/figures/prior_posterior_assay.pdf",
+                                       style = NULL) {
+  plot_prior_posterior_influence_group(influence, group = "assay", out_file = out_file, style = style)
+}
+
+
+#' Plot covariate/source effect influence group
+#'
+#' @inheritParams plot_prior_posterior_influence_group
+plot_prior_posterior_covariates <- function(influence,
+                                            out_file = "output/figures/prior_posterior_covariates.pdf",
+                                            style = NULL) {
+  plot_prior_posterior_influence_group(influence, group = "covariates", out_file = out_file, style = style)
+}
+
+
+#' Plot correlation/hyperparameter influence group
+#'
+#' @inheritParams plot_prior_posterior_influence_group
+plot_prior_posterior_correlations <- function(influence,
+                                              out_file = "output/figures/prior_posterior_correlations.pdf",
+                                              style = NULL) {
+  plot_prior_posterior_influence_group(influence, group = "correlations", out_file = out_file, style = style)
+}
+
+
 #' Convergence summary table (LaTeX)
 #'
 #' Produces a clean LaTeX table with key convergence metrics:

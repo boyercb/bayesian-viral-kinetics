@@ -800,6 +800,14 @@ prior_predictive <- function(data, draws = 10) {
   tau0_lfd <- logit(data$prior_lfd_mean) + 1 * tau0_lfd_raw
   tau_lfd  <- mvtnorm::rmvnorm(draws, rep(0, 4))
 
+  # --- viral culture observation model priors ---
+  alpha_tcid50 <- cbind(
+    rnorm(draws, 8, 3),
+    rnorm(draws, -0.5, 1),
+    rnorm(draws, 0, 1)
+  )
+  alpha_cult <- mvtnorm::rmvnorm(draws, rep(0, 2), diag(2))
+
   # --- test error rates ---
   if (data$test_error) {
     fp <- rbeta(draws, data$prior_fp * 50, (1 - data$prior_fp) * 50)
@@ -1105,10 +1113,53 @@ prior_predictive <- function(data, draws = 10) {
     zeta_sym_pfu = zeta_sym_pfu, zeta_sym_rna = zeta_sym_rna,
     zeta_sym_postpeak = zeta_sym_postpeak,
     zeta_sym_postpeak_rna = zeta_sym_postpeak_rna,
+    sigma_rna = sigma_rna,
+    sigma_pfu = sigma_pfu,
+    fp = if (data$test_error) fp else NULL,
+    fn = if (data$test_error) fn else NULL,
     sigma_sym = sigma_sym,
+    tau0_lfd = tau0_lfd,
+    tau_lfd = tau_lfd,
     tau_tp = tau_tp, tau_dp = tau_dp, tau_wp = tau_wp, tau_wr = tau_wr,
+    alpha_tcid50 = alpha_tcid50,
+    alpha_cult = alpha_cult,
     dp_rna = dp_rna, wp_rna = wp_rna, wr_rna = wr_rna, tp_rna = tp_rna,
     dp_pfu = dp_pfu, wp_pfu = wp_pfu, wr_pfu = wr_pfu, tp_pfu = tp_pfu,
+    sigma_ind_rna = if (isTRUE(data$ind_corr == 1)) t(sigma_ind_rna_pp) else NULL,
+    Omega_rna = if (isTRUE(data$ind_corr == 1)) {
+      arr <- array(NA_real_, dim = c(draws, 4, 4))
+      nu_lkj <- 4 + 2 * 2 - 2
+      for (d in seq_len(draws)) {
+        W <- stats::rWishart(1, nu_lkj, diag(4))[, , 1]
+        D_inv <- diag(1 / sqrt(diag(W)))
+        arr[d, , ] <- D_inv %*% W %*% D_inv
+      }
+      arr
+    } else NULL,
+    sigma_ind_pfu = matrix(
+      truncnorm::rtruncnorm(draws * if (data$ind_effects) 4 else 1,
+                            0, Inf, 0, data$prior_pfu_i_sd),
+      nrow = draws,
+      ncol = if (data$ind_effects) 4 else 1
+    ),
+    beta_dp_rna = if (data$adj_rna) beta_dp_rna else NULL,
+    beta_wp_rna = if (data$adj_rna) beta_wp_rna else NULL,
+    beta_wr_rna = if (data$adj_rna) beta_wr_rna else NULL,
+    beta_dp_pfu = if (data$adj_pfu) beta_dp_pfu else NULL,
+    beta_wp_pfu = if (data$adj_pfu) beta_wp_pfu else NULL,
+    beta_wr_pfu = if (data$adj_pfu) beta_wr_pfu else NULL,
+    beta_lfd = if (data$adj_lfd) beta_lfd else NULL,
+    beta_sym = if (data$adj_sym) beta_sym else NULL,
+    tp_k_rna = if (data$source_rna) tp_k_rna else NULL,
+    dp_k_rna = if (data$source_rna) dp_k_rna else NULL,
+    wp_k_rna = if (data$source_rna) wp_k_rna else NULL,
+    wr_k_rna = if (data$source_rna) wr_k_rna else NULL,
+    tp_k_pfu = if (data$source_pfu) tp_k_pfu else NULL,
+    dp_k_pfu = if (data$source_pfu) dp_k_pfu else NULL,
+    wp_k_pfu = if (data$source_pfu) wp_k_pfu else NULL,
+    wr_k_pfu = if (data$source_pfu) wr_k_pfu else NULL,
+    lfd_k = if (data$source_lfd) lfd_k else NULL,
+    to_k_sym = if (data$source_sym) to_k_sym else NULL,
     rna_hat = rna_hat, pfu_hat = pfu_hat, lfd_hat = lfd_hat,
     sym_hat = sym_hat, rna = rna, pfu = pfu, lfd = lfd, sym = sym,
     wf_mean_pp = if (data$use_wf) wf_mean_pp else NULL,

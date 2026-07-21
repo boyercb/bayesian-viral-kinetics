@@ -132,6 +132,54 @@ list(
   tar_target(ppc,         posterior_predictive_check(
     gq_fit, stacked_dat
   )),
+  tar_target(
+    prior_posterior_influence_summary,
+    summarize_prior_posterior_influence(kinetics_mcmc, prior_pred)
+  ),
+  tar_target(
+    fig_prior_posterior_core,
+    plot_prior_posterior_core(
+      prior_posterior_influence_summary,
+      out_file = "output/figures/prior_posterior_core.pdf",
+      style = "pnas"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    fig_prior_posterior_assay,
+    plot_prior_posterior_assay(
+      prior_posterior_influence_summary,
+      out_file = "output/figures/prior_posterior_assay.pdf",
+      style = "pnas"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    fig_prior_posterior_covariates,
+    plot_prior_posterior_covariates(
+      prior_posterior_influence_summary,
+      out_file = "output/figures/prior_posterior_covariates.pdf",
+      style = "pnas"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    fig_prior_posterior_correlations,
+    plot_prior_posterior_correlations(
+      prior_posterior_influence_summary,
+      out_file = "output/figures/prior_posterior_correlations.pdf",
+      style = "pnas"
+    ),
+    format = "file"
+  ),
+  tar_target(
+    tab_prior_posterior_influence,
+    save_prior_posterior_influence_table(
+      prior_posterior_influence_summary,
+      out_file = "output/tables/prior_posterior_influence.csv"
+    ),
+    format = "file"
+  ),
 
   # k-fold CV grouped by individual — computationally expensive (~K × 43 hrs).
   # Uncomment to run; consider using subsample_stan_data() first.
