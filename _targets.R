@@ -363,7 +363,7 @@ list(
 
   # Recovery settings (full-size by default; override for faster debugging)
   tar_target(recovery_frac, 1.0),
-  tar_target(recovery_n_reps, 5L),
+  tar_target(recovery_n_reps, 4L),
   tar_target(recovery_subsample_seed, 99L),
   tar_target(recovery_sim_seed_base, 4200L),
 
@@ -411,7 +411,8 @@ list(
       out <- check_recovery(
         recovery_mcmc_rep,
         recovery_sim_truth,
-        stan_data = recovery_sim_stan_data
+        stan_data = recovery_sim_stan_data,
+        prob = 0.95
       )
       out$replicate <- recovery_replicate
       out
@@ -435,7 +436,7 @@ list(
   # Representative single replicate for existing downstream figure/table wiring.
   tar_target(
     recovery_check,
-    dplyr::filter(recovery_checks, replicate == 1)
+    dplyr::filter(recovery_checks, replicate == 3)
   ),
 
   tar_target(
